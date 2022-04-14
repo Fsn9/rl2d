@@ -13,35 +13,46 @@ class Actions(Enum):
 	DOWN = 3
 
 class Entities(Enum):
-	WALL = -1
+	OBSTACLE = -1
 	EMPTY = 0
 	AGENT = 1
 	GOAL = 2
 
+
 class Agent:
 	def __init__(self):
 		self.__pos = [0,0]
+
 	@property
 	def pos(self):
 		return self.__pos
+
 	def set_x(self, x):
 		self.__pos[0] = x
+
 	def set_y(self, y):
 		self.__pos[1] = y
+
 	def go_left(self):
 		self.__pos[0] -= 1
+
 	def go_up(self):
 		self.__pos[1] -= 1
+
 	def go_right(self):
 		self.__pos[0] += 1
+
 	def go_down(self):
 		self.__pos[1] += 1
+
 	@property
 	def x(self):
 		return self.__pos[0]
+
 	@property
 	def y(self):
 		return self.__pos[1]
+		
 	def set_pos(self, x, y):
 		self.__pos[0], self.__pos[1] = x, y
 
@@ -50,24 +61,29 @@ class Environment:
 		self.__w = w
 		self.__h = h
 		self.__arena = np.zeros((self.__w+2,self.__h+2))
-		self.__arena[:,0] = Entities.WALL.value
-		self.__arena[0,1:] = Entities.WALL.value
-		self.__arena[1:,-1] = Entities.WALL.value
-		self.__arena[-1,1:self.__w+1] = Entities.WALL.value
+		self.__arena[:,0] = Entities.OBSTACLE.value
+		self.__arena[0,1:] = Entities.OBSTACLE.value
+		self.__arena[1:,-1] = Entities.OBSTACLE.value
+		self.__arena[-1,1:self.__w+1] = Entities.OBSTACLE.value
 		self.__agent = Agent()
 		self.reset()
+
 	def __repr__(self):
 		return str(self.__arena)
+
 	def reset(self):
 		for row in range(1,self.__h-1):
 			self.__arena[row, 1:self.__w-1] = Entities.EMPTY.value
 		r, c = randint(1, self.__w), randint(1, self.__h)
 		self.__set_value_arena(r, c, Entities.AGENT.value)
 		self.__agent.set_pos(c, r)
+
 	def __collided(self, x, y):
-		return self.__arena[x][y] == Entities.WALL.value
+		return self.__arena[x][y] == Entities.OBSTACLE.value
+
 	def __set_value_arena(self, x, y, val):
 		self.__arena[x,y] = val
+
 	def step(self, action):
 		self.__set_value_arena(self.__agent.y, self.__agent.x, Entities.EMPTY.value)
 		if action == Actions.LEFT:
@@ -89,7 +105,6 @@ class Environment:
 		elif action == Actions.RIGHT:
 			print('right')
 			if not self.__collided(self.__agent.y, self.__agent.x + 1):
-				print('right')
 				self.__agent.go_right()
 			else:
 				print('collided')
@@ -98,23 +113,16 @@ class Environment:
 		elif action == Actions.DOWN:
 			print('down')
 			if not self.__collided(self.__agent.y + 1, self.__agent.x):
-				print('down')
 				self.__agent.go_down()
 			else:
 				print('collided')
 				self.reset()
 				return
-		print(self.__agent.pos)
+		print('next position: ', self.__agent.pos)
 		self.__set_value_arena(self.__agent.y, self.__agent.x, Entities.AGENT.value)
-env = Environment(3,3)
+
+env = Environment(5,5)
 print(env)
 env.step(Actions.RIGHT)
-print(env)
-env.step(Actions.RIGHT)
-print(env)
-env.step(Actions.DOWN)
-print(env)
-env.step(Actions.DOWN)
-print(env)
-env.step(Actions.DOWN)
+print()
 print(env)
