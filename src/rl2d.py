@@ -2,16 +2,30 @@ from multiprocessing.sharedctypes import Value
 import numpy as np
 from enum import Enum
 from random import randint
+from math import atan2
+class StateSimple:
+	def __init__(self):
+		self.__azimuth = 0.0
+	def set(self, x, y, xg, yg):
+		self.__azimuth = atan2(yg - y, xg - x)
+		
+class StateComplex:
+	def set(self):
+		pass
 
-class StateNav:
-	pass
-class StateNavCol:
-	pass
 class Actions(Enum):
 	LEFT = 0
 	UP = 1
 	RIGHT = 2
 	DOWN = 3
+
+class QTable:
+	def __init__(self):
+		pass
+
+class QLearner:
+	def __init__(self):
+		pass
 
 class Entities(Enum):
 	OBSTACLE = -1
@@ -19,8 +33,7 @@ class Entities(Enum):
 	AGENT = 1
 	GOAL = 2
 
-
-class Agent:
+class EnvAgent:
 	def __init__(self):
 		self.__pos = [0,0]
 
@@ -69,7 +82,7 @@ class Environment:
 		self.__arena[0,1:] = Entities.OBSTACLE.value
 		self.__arena[1:,-1] = Entities.OBSTACLE.value
 		self.__arena[-1,1:self.__w+1] = Entities.OBSTACLE.value
-		self.__agent = Agent()
+		self.__agent = EnvAgent()
 		self.reset()
 
 	def __repr__(self):
