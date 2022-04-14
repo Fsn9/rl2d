@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import numpy as np
 from enum import Enum
 from random import randint
@@ -57,9 +58,12 @@ class Agent:
 		self.__pos[0], self.__pos[1] = x, y
 
 class Environment:
-	def __init__(self, w, h):
+	def __init__(self, w, h, num_obstacles):
 		self.__w = w
 		self.__h = h
+		if num_obstacles >= w * h:
+			raise ValueError('Number of obstacles needs to be lower than width * height')
+		self.__num_obstacles = num_obstacles
 		self.__arena = np.zeros((self.__w+2,self.__h+2))
 		self.__arena[:,0] = Entities.OBSTACLE.value
 		self.__arena[0,1:] = Entities.OBSTACLE.value
@@ -74,9 +78,24 @@ class Environment:
 	def reset(self):
 		for row in range(1,self.__h-1):
 			self.__arena[row, 1:self.__w-1] = Entities.EMPTY.value
-		r, c = randint(1, self.__w), randint(1, self.__h)
-		self.__set_value_arena(r, c, Entities.AGENT.value)
-		self.__agent.set_pos(c, r)
+		self.__generate_obstacles(self.__num_obstacles)
+		self.__place_agent_random()
+
+	def __generate_obstacles(self, num):
+		for i in range(num):
+			while True: 
+				r, c = randint(1, self.__w), randint(1, self.__h)
+				if self.__arena[r,c] == Entities.EMPTY.value:
+					self.__set_value_arena(r,c, Entities.OBSTACLE.value)
+					break
+
+	def __place_agent_random(self):
+		while True:
+			r, c = randint(1, self.__w), randint(1, self.__h)
+			if self.__arena[r,c] == Entities.EMPTY.value:
+				self.__set_value_arena(r, c, Entities.AGENT.value)
+				self.__agent.set_pos(c, r)
+				break
 
 	def __collided(self, x, y):
 		return self.__arena[x][y] == Entities.OBSTACLE.value
@@ -88,7 +107,7 @@ class Environment:
 		self.__set_value_arena(self.__agent.y, self.__agent.x, Entities.EMPTY.value)
 		if action == Actions.LEFT:
 			print('left')
-			if not self.__collided(self.__agent.y - 1, self.__agent.x - 1):
+			if not self.__collided(self.__agent.y, self.__agent.x - 1):
 				self.__agent.go_left()
 			else:
 				print('collided')
@@ -121,8 +140,18 @@ class Environment:
 		print('next position: ', self.__agent.pos)
 		self.__set_value_arena(self.__agent.y, self.__agent.x, Entities.AGENT.value)
 
-env = Environment(5,5)
+env = Environment(5,5,3)
+
 print(env)
+
 env.step(Actions.RIGHT)
-print()
+print(env)
+
+env.step(Actions.DOWN)
+print(env)
+
+env.step(Actions.LEFT)
+print(env)
+
+env.step(Actions.UP)
 print(env)
