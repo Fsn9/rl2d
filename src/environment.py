@@ -1,31 +1,7 @@
-from multiprocessing.sharedctypes import Value
-import numpy as np
-from enum import Enum
 from random import randint
-from math import atan2
-class StateSimple:
-	def __init__(self):
-		self.__azimuth = 0.0
-	def set(self, x, y, xg, yg):
-		self.__azimuth = atan2(yg - y, xg - x)
-		
-class StateComplex:
-	def set(self):
-		pass
-
-class Actions(Enum):
-	LEFT = 0
-	UP = 1
-	RIGHT = 2
-	DOWN = 3
-
-class QTable:
-	def __init__(self):
-		pass
-
-class QLearner:
-	def __init__(self):
-		pass
+from qlearning import Actions
+from enum import Enum
+import numpy as np
 
 class Entities(Enum):
 	OBSTACLE = -1
@@ -152,19 +128,3 @@ class Environment:
 				return
 		print('next position: ', self.__agent.pos)
 		self.__set_value_arena(self.__agent.y, self.__agent.x, Entities.AGENT.value)
-
-env = Environment(5,5,3)
-
-print(env)
-
-env.step(Actions.RIGHT)
-print(env)
-
-env.step(Actions.DOWN)
-print(env)
-
-env.step(Actions.LEFT)
-print(env)
-
-env.step(Actions.UP)
-print(env)
