@@ -12,11 +12,6 @@ initial_epsilon = 1
 final_epsilon = 0.05
 agent = QLearner('simple', 'simple', learning_rate, discount_factor, episodes, initial_epsilon, final_epsilon)
 
-
 for ep in range(episodes):
-    observation, done = env.reset()
-    print('before action')
-    print(env)
+    observation, _ = env.reset()
     env.step(agent.decide(observation))
-    print('after action')
-    print(env)

@@ -113,30 +113,35 @@ class Environment:
 	def step(self, action):
 		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
 		print('action: ', action)
+
 		if action == Actions.LEFT:
-			if not self.__collided(self.__agent.y, self.__agent.x - 1):
+			if self.__collided(self.__agent.y, self.__agent.x - 1):
+				print('collided')
+				return self.reset()
+			else:
 				self.__agent.go_left()
-			else:
-				print('collided')
-				return self.reset()
+
 		elif action == Actions.UP:
-			if not self.__collided(self.__agent.y - 1, self.__agent.x):
+			if self.__collided(self.__agent.y - 1, self.__agent.x):
+				print('collided')
+				return self.reset()
+			else:
 				self.__agent.go_up()
-			else:
-				print('collided')
-				return self.reset()
+
 		elif action == Actions.RIGHT:
-			if not self.__collided(self.__agent.y, self.__agent.x + 1):
+			if self.__collided(self.__agent.y, self.__agent.x + 1):
+				print('collided')
+				return self.reset()
+			else:
 				self.__agent.go_right()
-			else:
-				print('collided')
-				return self.reset()
+
 		elif action == Actions.DOWN:
-			if not self.__collided(self.__agent.y + 1, self.__agent.x):
-				self.__agent.go_down()
-			else:
+			if self.__collided(self.__agent.y + 1, self.__agent.x):
 				print('collided')
 				return self.reset()
+			else:
+				self.__agent.go_down()
+				
 		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
 		return self.observe(), False
 
