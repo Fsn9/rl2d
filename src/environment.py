@@ -47,7 +47,17 @@ class EnvEntity:
 		self.__pos[0], self.__pos[1] = x, y
 
 class RewardFunction:
-	pass
+	def __init__(self):
+		pass
+	def __call__(self, event = None):
+		if event is None:
+			return 0
+		elif event == Entities.OBSTACLE.value:
+			print('COLLIDED')
+			return -1
+		else:
+			print('GOAL')
+			return 1
 
 class Environment:
 	def __init__(self, w, h, num_obstacles):
@@ -73,17 +83,19 @@ class Environment:
 			Entities.OBSTACLE: self.__obstacles,
 			Entities.GOAL: self.__goal
 		}
+		self.__reward_function = RewardFunction()
 		self.reset()
 
 	def __repr__(self):
 		return str(self.__arena)
 
-	def reset(self):
+	def reset(self, event = None):
 		for row in range(1,self.__h + 1):
 			self.__arena[row, 1:self.__w + 1] = [Entities.EMPTY.value]
 		self.__generate_obstacles(self.__num_obstacles)
 		self.__place_entity_random(Entities.AGENT)
-		return self.observe(), False
+		self.__place_entity_random(Entities.GOAL)
+		return self.observe(), True, self.__reward_function(event)
 
 	def __generate_obstacles(self, num):
 		for i in range(num):
@@ -104,46 +116,42 @@ class Environment:
 					break
 				elif ent == Entities.GOAL:
 					self.__arena[r,c] = Entities.GOAL.value
-					self.__agent.set_pos(c, r)
+					self.__goal.set_pos(c, r)
 					break
-
-	def __collided(self, x, y):
-		return self.__arena[x][y] == Entities.OBSTACLE.value
 
 	def step(self, action):
 		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
-		print('action: ', action)
 
 		if action == Actions.LEFT:
-			if self.__collided(self.__agent.y, self.__agent.x - 1):
-				print('collided')
-				return self.reset()
+			neighbour = self.__arena[self.__agent.y, self.__agent.x - 1]
+			if neighbour != Entities.EMPTY.value:
+				return self.reset(neighbour)
 			else:
 				self.__agent.go_left()
 
 		elif action == Actions.UP:
-			if self.__collided(self.__agent.y - 1, self.__agent.x):
-				print('collided')
-				return self.reset()
+			neighbour = self.__arena[self.__agent.y - 1, self.__agent.x]
+			if neighbour != Entities.EMPTY.value:
+				return self.reset(neighbour)
 			else:
 				self.__agent.go_up()
 
 		elif action == Actions.RIGHT:
-			if self.__collided(self.__agent.y, self.__agent.x + 1):
-				print('collided')
-				return self.reset()
+			neighbour = self.__arena[self.__agent.y, self.__agent.x + 1]
+			if neighbour != Entities.EMPTY.value:
+				return self.reset(neighbour)
 			else:
 				self.__agent.go_right()
 
 		elif action == Actions.DOWN:
-			if self.__collided(self.__agent.y + 1, self.__agent.x):
-				print('collided')
-				return self.reset()
+			neighbour = self.__arena[self.__agent.y + 1, self.__agent.x]
+			if neighbour != Entities.EMPTY.value:
+				return self.reset(neighbour)
 			else:
 				self.__agent.go_down()
 				
 		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
-		return self.observe(), False
+		return self.observe(), False, self.__reward_function()
 
 	def __generate_los(self):
 		# [left, up, right, down]
@@ -162,4 +170,3 @@ class Environment:
 			self.__goal.y,
 			self.__generate_los()
 			)
-
