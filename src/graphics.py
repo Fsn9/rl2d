@@ -45,6 +45,9 @@ class GUI(tk.Tk):
             self.big_side
         )
 
+        # set title
+        self.title("rl2d")
+
         # set geometry
         self.geometry(str(self.width) + "x" + str(self.height))
 
