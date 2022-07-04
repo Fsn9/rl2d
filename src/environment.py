@@ -220,12 +220,23 @@ class EmptyEnvironment:
 	def h(self):
 		return self.__h
 
+	@property
+	def agent(self):
+		return self.__agent
+
+	@property
+	def goal(self):
+		return self.__goal
+	
 	def reset(self, event = None):
 		for row in range(self.__h):
 			self.__arena[row, :] = [Entities.EMPTY.value]
 		self.__place_entity_random(Entities.AGENT)
 		self.__place_entity_random(Entities.GOAL)
-		return self.observe(), False, RewardFunction.UNDEFINED, Entities.VOID.value
+		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
+		
+	def observe(self):
+		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
 
 	def __place_entity_random(self, ent):
 		while True:
@@ -249,7 +260,7 @@ class EmptyEnvironment:
 		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
 		
 		# Save last state
-		last_state = self.observe()
+		last_state = self.get_agent_state()
 		"""
 		if action == Actions.ROT_LEFT:
 			self.__agent.go(action)
@@ -259,7 +270,7 @@ class EmptyEnvironment:
 				neighbour = None
 			else:
 				neighbour = self.__arena[n_y, n_x]
-			next_state = self.observe()
+			next_state = self.get_agent_state()
 			if neighbour == Entities.GOAL.value:
 				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
 	
@@ -273,7 +284,7 @@ class EmptyEnvironment:
 				neighbour = self.__arena[n_y, n_x]
 
 			self.__agent.move(n_x, n_y)
-			next_state = self.observe()
+			next_state = self.get_agent_state()
 			if neighbour == Entities.GOAL.value:
 				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
 		"""
@@ -287,7 +298,7 @@ class EmptyEnvironment:
 				neighbour = None
 			else:
 				neighbour = self.__arena[n_y, n_x]
-			next_state = self.observe()
+			next_state = self.get_agent_state()
 			if neighbour == Entities.GOAL.value:
 				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
 		"""
@@ -306,8 +317,8 @@ class EmptyEnvironment:
 			# Move to predicted pose
 			self.__agent.move(x, y, ang)
 
-			# Observe next state
-			next_state = self.observe()
+			# get_agent_state next state
+			next_state = self.get_agent_state()
 
 			# If neighbour is the goal, finish episode
 			if neighbour == Entities.GOAL.value:
@@ -324,17 +335,17 @@ class EmptyEnvironment:
 			# Move to predicted pose
 			self.__agent.move(x, y, ang)
 
-			# Observe next state
-			next_state = self.observe()
+			# get_agent_state next state
+			next_state = self.get_agent_state()
 
 		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
 
-		# Observe next state
-		next_state = self.observe()
+		# get_agent_state next state
+		next_state = self.get_agent_state()
 		#print('Normal step()')
 		return next_state, False, self.__reward_function(last_state, action, next_state, None), neighbour
 
-	def observe(self):
+	def get_agent_state(self):
 		return self.__agent_state(
 			(	
 				self.__agent.x, 
@@ -383,7 +394,7 @@ class ObstacleEnvironment:
 		self.__generate_obstacles(self.__num_obstacles)
 		self.__place_entity_random(Entities.AGENT)
 		self.__place_entity_random(Entities.GOAL)
-		return self.observe(), True, self.__reward_function(None, None, None, event), event
+		return self.get_agent_state(), True, self.__reward_function(None, None, None, event), event
 
 	def __generate_obstacles(self, num):
 		for i in range(num):
@@ -412,7 +423,7 @@ class ObstacleEnvironment:
 		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
 		
 		# Save last observation to feed reward function
-		last_obs = self.observe()
+		last_obs = self.get_agent_state()
 
 		if action == Actions.LEFT:
 			neighbour = self.__arena[self.__agent.y, self.__agent.x - 1]
@@ -444,7 +455,7 @@ class ObstacleEnvironment:
 				
 		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
 
-		next_obs = self.observe()
+		next_obs = self.get_agent_state()
 		return next_obs, False, self.__reward_function(last_obs, action, next_obs, None), neighbour
 
 	def __generate_los(self):
@@ -456,7 +467,7 @@ class ObstacleEnvironment:
 			self.__arena[self.__agent.y + 1][self.__agent.x],
 		]
 	
-	def observe(self):
+	def get_agent_state(self):
 		return (
 			self.__agent.x,
 			self.__agent.y,
