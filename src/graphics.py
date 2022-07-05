@@ -1,5 +1,6 @@
 import tkinter as tk
 import matplotlib.pyplot as plt
+from math import sin, cos
 
 def compute_pixel_size(grid_width, grid_height, big_side):
     if grid_width > grid_height:
@@ -34,11 +35,12 @@ class GUI(tk.Tk):
 
         # define objects containing rectangles of food and snake
         self.__agent_gui = []
+        self.__agent_orientation = []
         self.__goal_gui = []
 
         # @TODO: put this in json or yaml
         num_obstacles = 0
-        self.__grid_width, self.__grid_height, self.big_side = self.__environment.w, self.__environment.h, 300
+        self.__grid_width, self.__grid_height, self.big_side = self.__environment.w, self.__environment.h, 400
 
         self.__pixel_size, self.width, self.height = compute_pixel_size(self.__grid_width + 2,
             self.__grid_height + 2,
@@ -100,6 +102,12 @@ class GUI(tk.Tk):
                                             (1 + y) * self.__pixel_size, fill = color)
         return rectangle
 
+    def draw_arrow(self, x0, y0, x1, y1):
+        arrow = self.__canvas.create_line(x0 * self.__pixel_size, y0 * self.__pixel_size,
+            x1 * self.__pixel_size, y1 * self.__pixel_size, arrow = tk.LAST, fill = "blue", width = 5
+        )
+        return arrow
+
     def draw_walls(self):
         for x in range(self.__grid_width + 2):
             self.draw_rectangle(x, 0, 'brown')
@@ -112,7 +120,12 @@ class GUI(tk.Tk):
 
     def draw(self):
         agent_pos = self.__environment.agent.pos
+        agent_ori = self.__environment.agent.theta
+
         self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
+
+        mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
+        self.__agent_orientation = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
 
         goal_pos = self.__environment.goal.pos
         self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
@@ -130,6 +143,7 @@ class GUI(tk.Tk):
     def clear(self):
         self.__canvas.delete(self.__agent_gui)
         self.__canvas.delete(self.__goal_gui)
+        self.__canvas.delete(self.__agent_orientation)
 
     def repaint(self):
         self.clear()
