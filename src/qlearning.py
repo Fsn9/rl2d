@@ -204,10 +204,10 @@ class QLearner:
 	def decide(self, state):
 		self.__current_steps_sum += 1
 		if random() > self.__current_epsilon:
-			print('GREEDY')
+			print('action: GREEDY')
 			return self.__qtable.get_greedy_action(state)
 		else:
-			print('RANDOM')
+			print('action: RANDOM')
 			return choice(self.__action_space)
 
 	def learn(self, cur_state, next_state, action, reward, terminal, neighbour):
