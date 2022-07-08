@@ -35,7 +35,7 @@ class GUI(tk.Tk):
 
         # define objects containing rectangles of food and snake
         self.__agent_gui = []
-        self.__agent_orientation = []
+        self.__agent_orientation_gui = []
         self.__goal_gui = []
 
         # @TODO: put this in json or yaml
@@ -125,7 +125,7 @@ class GUI(tk.Tk):
         self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
 
         mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
-        self.__agent_orientation = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
+        self.__agent_orientation_gui = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
 
         goal_pos = self.__environment.goal.pos
         self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
@@ -143,7 +143,7 @@ class GUI(tk.Tk):
     def clear(self):
         self.__canvas.delete(self.__agent_gui)
         self.__canvas.delete(self.__goal_gui)
-        self.__canvas.delete(self.__agent_orientation)
+        self.__canvas.delete(self.__agent_orientation_gui)
 
     def repaint(self):
         self.clear()
@@ -166,4 +166,4 @@ class GUI(tk.Tk):
                 print('episodes: ', self.__learner.episodes_passed)
             self.repaint()
 
-        self.after(1, self.run_rl)
+        self.after(1000, self.run_rl)
