@@ -3,7 +3,8 @@ from environment import *
 from graphics import GUI
 
 # Empty environment
-env = EmptyEnvironment(6,6)
+#env = EmptyEnvironment(6,6)
+env = Environment(6,6,2)
 
 # Hyperparameters
 learning_rate = 0.1
