@@ -248,6 +248,10 @@ class Environment(ABC):
 	def state_space(self):
 		return self._state_space
 
+	@property
+	def entities(self):
+		return self._entities
+
 	@abstractmethod
 	def reset(self, event = None):
 		pass

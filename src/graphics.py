@@ -1,6 +1,7 @@
 import tkinter as tk
 import matplotlib.pyplot as plt
 from math import sin, cos
+from environment import EmptyEnvironment, ObstacleEnvironment, Entities
 
 def compute_pixel_size(grid_width, grid_height, big_side):
     if grid_width > grid_height:
@@ -22,7 +23,7 @@ def compute_pixel_size(grid_width, grid_height, big_side):
 
     return pixel_size, width, height
 
-class GUI(tk.Tk): # TODO: adapt this to new Environment refactor
+class GUI(tk.Tk):
     def __init__(self, learner, environment):
         # initialize a Tk object
         tk.Tk.__init__(self)
@@ -37,6 +38,7 @@ class GUI(tk.Tk): # TODO: adapt this to new Environment refactor
         self.__agent_gui = []
         self.__agent_orientation_gui = []
         self.__goal_gui = []
+        self.__obstacles_gui = []
 
         # @TODO: put this in json or yaml
         num_obstacles = 0
@@ -77,8 +79,11 @@ class GUI(tk.Tk): # TODO: adapt this to new Environment refactor
         #self.label_collisions_itself_val = self.create_label(str(self.__learner.counter_collisions_with_itself),7,1)
 
         # First drawing
+        self.draw = self.draw_simple
         self.clear()
-        self.draw_walls()
+        if isinstance(self.__environment,ObstacleEnvironment):
+            self.draw = self.draw_complex
+            self.draw_walls()
         self.draw()
 
         # start learning process
@@ -118,20 +123,28 @@ class GUI(tk.Tk): # TODO: adapt this to new Environment refactor
         for y in range(1, self.__grid_height + 2):
             self.draw_rectangle(self.__grid_width + 1, y, 'brown')
 
-    def draw(self):
-        agent_pos = self.__environment.agent.pos
-        agent_ori = self.__environment.agent.theta
-
-        self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
-
+    def draw_agent(self):
+        # Agent body and orientation
+        agent_pos = self.__environment.entities[Entities.AGENT].pos
+        agent_ori = self.__environment.entities[Entities.AGENT].theta
         mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
+        self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
         self.__agent_orientation_gui = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
 
-        goal_pos = self.__environment.goal.pos
+    def draw_goal(self):
+        # Goal
+        goal_pos = self.__environment.entities[Entities.GOAL].pos
         self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
-        
-        steps, gamma, epsilon, reward, episodes = self.__learner.get_stats()
 
+    def draw_obstacles(self):
+        # Obstacles
+        obstacles = self.__environment.entities[Entities.OBSTACLE]
+        for obstacle in obstacles:
+            self.__obstacles_gui.append(self.draw_rectangle(obstacle.pos[0] + 1, obstacle.pos[1], 'brown'))
+
+    def draw_stats(self):
+        # Statistics
+        steps, gamma, epsilon, reward, episodes = self.__learner.get_stats()
         self.label_steps_val.config(text=str(steps)[0:self.__str_len_limit])
         self.label_gamma_val.config(text=str(gamma)[0:self.__str_len_limit])
         self.label_epsilon_val.config(text=str(epsilon)[0:self.__str_len_limit])
@@ -140,10 +153,19 @@ class GUI(tk.Tk): # TODO: adapt this to new Environment refactor
         #self.label_collisions_itself_val.config(text=str(self_collisions)[0:6])
         #self.label_collisions_wall_val.config(text=str(wall_collisions)[0:6])
 
+    def draw_simple(self):
+        self.draw_agent()
+        self.draw_goal()
+
+    def draw_complex(self):
+        self.draw_simple()
+        self.draw_obstacles()
+
     def clear(self):
         self.__canvas.delete(self.__agent_gui)
         self.__canvas.delete(self.__goal_gui)
         self.__canvas.delete(self.__agent_orientation_gui)
+        self.__canvas.delete(self.__obstacles_gui)
 
     def repaint(self):
         self.clear()

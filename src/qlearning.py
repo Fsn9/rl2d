@@ -53,7 +53,6 @@ class QTable:
 		for state in self.__state_space():
 			for action in Actions:
 				self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
-		print(self.__table)		
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:

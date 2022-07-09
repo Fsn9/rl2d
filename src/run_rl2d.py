@@ -3,9 +3,9 @@ from environment import *
 from graphics import GUI
 
 # Empty environment
-#env = EmptyEnvironment(6,6)
+env = EmptyEnvironment(6,6)
 #env = Environment(6,6)
-env = ObstacleEnvironment(6,6,2)
+#env = ObstacleEnvironment(6,6,2)
 print(env)
 
 # Hyperparameters
