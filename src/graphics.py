@@ -22,7 +22,7 @@ def compute_pixel_size(grid_width, grid_height, big_side):
 
     return pixel_size, width, height
 
-class GUI(tk.Tk):
+class GUI(tk.Tk): # TODO: adapt this to new Environment refactor
     def __init__(self, learner, environment):
         # initialize a Tk object
         tk.Tk.__init__(self)

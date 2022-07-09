@@ -3,6 +3,7 @@ from enum import Enum
 import numpy as np
 from math import atan2, pi, cos, sin
 from itertools import product
+from abc import ABC, abstractmethod
 
 PI = round(pi,2)
 PI_2 = round(pi * 0.5, 2)
@@ -28,8 +29,7 @@ class StateComplex(StateSimple):
 		super().__init__()
 		self.__los = []
 	def _process(self, obs):
-		super()._process(obs)
-		return self._azimuth
+		return (super()._process(obs), obs[5])
 
 class Actions(Enum):
 	ROT_LEFT = -1
@@ -183,13 +183,15 @@ class RewardFunction:
 		#	return self.UNDEFINED
 		#if event is Entities.VOID.value:
 		#	return self.UNDEFINED
+		print('cur:',cur_state, 'next:',next_state)
 
 		if next_state == 0.0 or event == Entities.GOAL.value:
 			print('reward: GOAL')
 			return self.GOAL_PRIZE
 
 		elif event is None:
-			print('reward: normal')
+			print('reward: normal NAO ESQUECER DE MUDAR!')
+			return 1
 			return self.normalize(-self.__max_angle_variation, 
 				self.__max_angle_variation, 
 				abs(cur_state) - abs(next_state)
@@ -206,246 +208,93 @@ class RewardFunction:
 	def normalize(self, min, max, val):
 		return 2 * (val - min)  * self.__inv_den - 1
 
-class Environment:
-	def __init__(self, w, h, num_obstacles = 0):
-		self.__w = w
-		self.__h = h
-		if num_obstacles >= w * h:
-			raise ValueError('Number of obstacles needs to be lower than width * height')
-		self.__num_obstacles = num_obstacles
-		if self.__num_obstacles == 0:
-			self.__arena = self.__build_arena()
-		elif self.__num_obstacles > 0:
-			self.__arena = self.__build_arena(True)
-		else:
-			raise ValueError('Invalid number of obstacles')
-
-		# State space
-		self.__state_space = DiscreteAngularSpace(self.__w, self.__h)
-		self.__los_state_space = DiscreteLineOfSightSpace(1,'T')
-		if num_obstacles > 0: self.__state_space.concat(self.__los_state_space)
-		print('State space:', self.__state_space, 'len:', len(self.__state_space))
+class Environment(ABC):
+	def __init__(self, w, h):
+		self._w, self._h = w, h
+		self._build_arena()
 
 		# Entities
-		self.__agent = EnvAgent()
-		self.__goal = EnvEntity()
-		self.__obstacles = []
-		for i in range(self.__num_obstacles):
-			self.__obstacles.append(EnvEntity())
-		self.__entities = {
-			Entities.AGENT: self.__agent,
-			Entities.GOAL: self.__goal,
-			Entities.OBSTACLE: self.__obstacles
+		self._agent, self._goal = EnvAgent(), EnvEntity()
+		self._entities = {
+			Entities.AGENT: self._agent,
+			Entities.GOAL: self._goal,
 		}
-
-		# Agent state
-		self.__agent_state = StateComplex()
+		# State space
+		self._state_space = DiscreteAngularSpace(self._w, self._h)
 
 		# Reward function
-		self.__reward_function = RewardFunction(self.__state_space)
-
-		# Reset environment
-		self.reset()
+		self.__reward_function = RewardFunction(self._state_space)
 
 	def __repr__(self):
-		return str(self.__arena)
+		return str(self._arena)
 
 	@property
 	def w(self):
-		return self.__w
+		return self._w
 
 	@property
 	def h(self):
-		return self.__h
+		return self._h
 
 	@property
 	def agent(self):
-		return self.__agent
+		return self._agent
 
 	@property
 	def goal(self):
-		return self.__goal
-	
+		return self._goal
+
+	@property
+	def state_space(self):
+		return self._state_space
+
+	@abstractmethod
 	def reset(self, event = None):
-		self.__arena[1:self.__h, 1:self.__w] = Entities.EMPTY.value
-		self.__place_entity_random(Entities.AGENT)
-		self.__place_entity_random(Entities.GOAL)
-		self.__generate_obstacles(self.__num_obstacles)
-		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
+		pass
 		
-	def __build_arena(self, obstacles = False):
-		if not obstacles:
-			return np.zeros((self.__w, self.__h))
-		else:
-			arena = np.zeros((self.__w + 2, self.__h + 2))
-			arena[:,0] = Entities.OBSTACLE.value
-			arena[0,1:] = Entities.OBSTACLE.value
-			arena[1:,-1] = Entities.OBSTACLE.value
-			arena[-1,1:self.__w+1] = Entities.OBSTACLE.value
-			return arena
+	def _build_arena(self):
+		self._arena = np.zeros((self._w, self._h), dtype = np.int8)
 
 	def observe(self):
 		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
 
-	def __place_entity_random(self, ent):
+	def _place_entity_random(self, ent):
 		while True:
-			r, c = randint(0, self.__w - 1), randint(0, self.__h - 1)
-			if self.__arena[r,c] == Entities.EMPTY.value:
-				self.__arena[r,c] = ent.value
+			r, c = randint(0, self._w - 1), randint(0, self._h - 1)
+			if self._arena[r,c] == Entities.EMPTY.value:
+				self._arena[r,c] = ent.value
 				if ent == Entities.AGENT:
-					self.__agent.move(c, r, 0.0)
+					self._agent.move(c, r, 0.0)
 					break
 				elif ent == Entities.GOAL:
-					self.__goal.move(c, r)
-					break
-
-	def __generate_obstacles(self, num):
-		for i in range(num):
-			while True: 
-				r, c = randint(1, self.__w), randint(1, self.__h)
-				if self.__arena[r,c] == Entities.EMPTY.value:
-					self.__arena[r,c] = Entities.OBSTACLE.value
-					self.__entities[Entities.OBSTACLE][i].move(c, r)
+					self._goal.move(c, r)
 					break
 
 	# When invalid action, skip to next iteration
 	def skip(self, last_state):
 		return last_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
 
+	# A physics iteration in the environment
+	@abstractmethod
 	def step(self, action):
-		# Clean old agent info
-		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
-		
-		# Save last state
-		last_state = self.get_agent_state()
-		
-		# Predict next pose
-		x, y, ang = self.__agent.kinematics(action)
+		pass
 
-		if action == Actions.FWD:
-			# If next pose is out of bounds, return and skip to next decision
-			if x < 0 or x == self.__w or y < 0 or y == self.__h:
-				return self.skip(last_state)
-
-			# Get neighbour of next pose
-			neighbour = self.__arena[y,x]
-
-			# Move to predicted pose
-			self.__agent.move(x, y, ang)
-
-			# get_agent_state next state
-			next_state = self.get_agent_state()
-
-			# If neighbour is the goal, finish episode
-			if neighbour == Entities.GOAL.value:
-				#print('\tGot goal')
-				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
-		# action == ROT_LEFT or ROT_RIGHT
-		else:
-			# If next pose is out of bounds, neighbour is None
-			if x < 0 or x == self.__w or y < 0 or y == self.__h:
-				neighbour = None
-			else:
-				neighbour = self.__arena[y,x]
-
-			# Move to predicted pose
-			self.__agent.move(x, y, ang)
-
-			# get_agent_state next state
-			next_state = self.get_agent_state()
-
-		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
-
-		# get_agent_state next state
-		next_state = self.get_agent_state()
-		#print('Normal step()')
-		return next_state, False, self.__reward_function(last_state, action, next_state, None), neighbour
-
+	@abstractmethod
 	def get_agent_state(self):
-		return self.__agent_state(
-			(	
-				self.__agent.x, 
-				self.__agent.y, 
-				self.__agent.theta,
-				self.__goal.x, 
-				self.__goal.y
-			)
-		)
-	def __generate_los(self):
-		# [left, up, right, down]
-		return [
-			self.__arena[self.__agent.y][self.__agent.x - 1],
-			self.__arena[self.__agent.y - 1][self.__agent.x],
-			self.__arena[self.__agent.y][self.__agent.x + 1],
-			self.__arena[self.__agent.y + 1][self.__agent.x],
-		]
+		pass
 
 class EmptyEnvironment(Environment):
 	def __init__(self, w, h):
-		self.__w = w
-		self.__h = h
-		self.__arena = np.zeros((self.__w,self.__h))
-		self.__state_space = DiscreteAngularSpace(self.__w, self.__h)
-		self.__agent = EnvAgent()
-		self.__goal = EnvEntity()
-		self.__entities = {
-			Entities.AGENT: self.__agent,
-			Entities.GOAL: self.__goal
-		}
 		self.__agent_state = StateSimple()
-		self.__reward_function = RewardFunction(self.__state_space)
+		super().__init__(w,h)
+		self.__reward_function = RewardFunction(self._state_space)
 		self.reset()
 
-	def __repr__(self):
-		return str(self.__arena)
-
-	@property
-	def w(self):
-		return self.__w
-
-	@property
-	def h(self):
-		return self.__h
-
-	@property
-	def agent(self):
-		return self.__agent
-
-	@property
-	def goal(self):
-		return self.__goal
-	
 	def reset(self, event = None):
-		for row in range(self.__h):
-			self.__arena[row, :] = [Entities.EMPTY.value]
-		self.__place_entity_random(Entities.AGENT)
-		self.__place_entity_random(Entities.GOAL)
+		self._arena[1:self._h, 1:self._w] = Entities.EMPTY.value
+		self._place_entity_random(Entities.AGENT)
+		self._place_entity_random(Entities.GOAL)
 		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
-		
-	def observe(self):
-		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
-
-	def __place_entity_random(self, ent):
-		while True:
-			r, c = randint(0, self.__w - 1), randint(0, self.__h - 1)
-			if self.__arena[r,c] == Entities.EMPTY.value:
-				self.__arena[r,c] = ent.value
-				print(self.__arena, r, c)
-				if ent == Entities.AGENT:
-					self.__agent.move(c, r, 0.0)
-					break
-				elif ent == Entities.GOAL:
-					self.__goal.move(c, r)
-					break
-
-	def __generate_obstacles(self, num):
-		for i in range(num):
-			while True: 
-				r, c = randint(1, self.__w), randint(1, self.__h)
-				if self.__arena[r,c] == Entities.EMPTY.value:
-					self.__arena[r,c] = Entities.OBSTACLE.value
-					self.__entities[Entities.OBSTACLE][i].move(c, r)
-					break
 
 	# When invalid action, skip to next iteration
 	def skip(self, last_state):
@@ -453,180 +302,175 @@ class EmptyEnvironment(Environment):
 
 	def step(self, action):
 		# Clean old agent info
-		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
+		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value
 		
 		# Save last state
 		last_state = self.get_agent_state()
 		
 		# Predict next pose
-		x, y, ang = self.__agent.kinematics(action)
+		x, y, ang = self._agent.kinematics(action)
 
+		# Choose action
 		if action == Actions.FWD:
 			# If next pose is out of bounds, return and skip to next decision
-			if x < 0 or x == self.__w or y < 0 or y == self.__h:
+			if x < 0 or x == self._w or y < 0 or y == self._h:
 				return self.skip(last_state)
 
 			# Get neighbour of next pose
-			neighbour = self.__arena[y,x]
+			neighbour = self._arena[y,x]
 
 			# Move to predicted pose
-			self.__agent.move(x, y, ang)
+			self._agent.move(x, y, ang)
 
 			# get_agent_state next state
 			next_state = self.get_agent_state()
 
 			# If neighbour is the goal, finish episode
 			if neighbour == Entities.GOAL.value:
-				#print('\tGot goal')
 				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
 		# action == ROT_LEFT or ROT_RIGHT
 		else:
 			# If next pose is out of bounds, neighbour is None
-			if x < 0 or x == self.__w or y < 0 or y == self.__h:
+			if x < 0 or x == self._w or y < 0 or y == self._h:
 				neighbour = None
 			else:
-				neighbour = self.__arena[y,x]
+				neighbour = self._arena[y,x]
 
 			# Move to predicted pose
-			self.__agent.move(x, y, ang)
+			self._agent.move(x, y, ang)
 
 			# get_agent_state next state
 			next_state = self.get_agent_state()
 
-		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
+		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
 		# get_agent_state next state
 		next_state = self.get_agent_state()
-		#print('Normal step()')
 		return next_state, False, self.__reward_function(last_state, action, next_state, None), neighbour
 
 	def get_agent_state(self):
 		return self.__agent_state(
 			(	
-				self.__agent.x, 
-				self.__agent.y, 
-				self.__agent.theta,
-				self.__goal.x, 
-				self.__goal.y
+				self._agent.x, 
+				self._agent.y, 
+				self._agent.theta,
+				self._goal.x, 
+				self._goal.y
 			)
 		)
 
 class ObstacleEnvironment(Environment):
 	def __init__(self, w, h, num_obstacles):
-		self.__w = w
-		self.__h = h
+		self.__agent_state = StateComplex()
 		if num_obstacles >= w * h:
 			raise ValueError('Number of obstacles needs to be lower than width * height')
-		self.__state_space = DiscreteAngularSpace(self.__w, self.__h)
-		# juntar os dois state spaces
-		self.__num_obstacles = num_obstacles
-		self.__arena = np.zeros((self.__w+2,self.__h+2))
-		self.__arena[:,0] = Entities.OBSTACLE.value
-		self.__arena[0,1:] = Entities.OBSTACLE.value
-		self.__arena[1:,-1] = Entities.OBSTACLE.value
-		self.__arena[-1,1:self.__w+1] = Entities.OBSTACLE.value
-
-		self.__agent = EnvEntity()
-		self.__goal = EnvEntity()
+		if num_obstacles > 0:
+			self.__num_obstacles = num_obstacles
+		else:
+			raise ValueError('Invalid number of obstacles')
 		self.__obstacles = []
+
+		super().__init__(w,h)
+
+		# Add obstacles
 		for i in range(self.__num_obstacles):
 			self.__obstacles.append(EnvEntity())
+		self._entities[Entities.OBSTACLE] = self.__obstacles
 
-		self.__entities = {
-			Entities.AGENT: self.__agent,
-			Entities.OBSTACLE: self.__obstacles,
-			Entities.GOAL: self.__goal
-		}
-		self.__reward_function = RewardFunction(self.__state_space)
+		# State space
+		self.__los_state_space = DiscreteLineOfSightSpace(1,'T')
+		self._state_space.concat(self.__los_state_space)
+		print('State space len:', len(self._state_space))
+
+		self.__reward_function = RewardFunction(self._state_space)
 		self.reset()
 
-	def __repr__(self):
-		return str(self.__arena)
-
 	def reset(self, event = None):
-		for row in range(1,self.__h + 1):
-			self.__arena[row, 1:self.__w + 1] = [Entities.EMPTY.value]
+		self._arena[1:self._h, 1:self._w] = [Entities.EMPTY.value]
+		self._place_entity_random(Entities.AGENT)
+		self._place_entity_random(Entities.GOAL)
 		self.__generate_obstacles(self.__num_obstacles)
-		self.__place_entity_random(Entities.AGENT)
-		self.__place_entity_random(Entities.GOAL)
-		return self.get_agent_state(), True, self.__reward_function(None, None, None, event), event
+		return self.get_agent_state(), False, RewardFunction.UNDEFINED, Entities.VOID.value
+
+	def _build_arena(self):
+		self._arena = np.zeros((self._w + 2, self._h + 2), dtype = np.int8)
+		self._arena[:,0] = Entities.OBSTACLE.value
+		self._arena[0,1:] = Entities.OBSTACLE.value
+		self._arena[1:,-1] = Entities.OBSTACLE.value
+		self._arena[-1,1:self._w+1] = Entities.OBSTACLE.value
 
 	def __generate_obstacles(self, num):
 		for i in range(num):
 			while True: 
-				r, c = randint(1, self.__w), randint(1, self.__h)
-				if self.__arena[r,c] == Entities.EMPTY.value:
-					self.__arena[r,c] = Entities.OBSTACLE.value
-					self.__entities[Entities.OBSTACLE][i].move(c, r)
-					break
-
-	def __place_entity_random(self, ent):
-		while True:
-			r, c = randint(1, self.__w), randint(1, self.__h)
-			if self.__arena[r,c] == Entities.EMPTY.value:
-				if ent == Entities.AGENT:
-					self.__arena[r,c] = Entities.AGENT.value
-					self.__agent.move(c, r)
-					break
-				elif ent == Entities.GOAL:
-					self.__arena[r,c] = Entities.GOAL.value
-					self.__goal.move(c, r)
+				r, c = randint(1, self._w), randint(1, self._h)
+				if self._arena[r,c] == Entities.EMPTY.value:
+					self._arena[r,c] = Entities.OBSTACLE.value
+					self._entities[Entities.OBSTACLE][i].move(c, r)
 					break
 
 	def step(self, action):
 		# Clean old agent info
-		self.__arena[self.__agent.y,self.__agent.x] = Entities.EMPTY.value
+		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value
 		
-		# Save last observation to feed reward function
-		last_obs = self.get_agent_state()
+		# Save last state
+		last_state = self.get_agent_state()
+		
+		# Predict next pose
+		x, y, ang = self._agent.kinematics(action)
 
-		if action == Actions.LEFT:
-			neighbour = self.__arena[self.__agent.y, self.__agent.x - 1]
-			if neighbour != Entities.EMPTY.value:
-				return self.reset(neighbour)
+		if action == Actions.FWD:
+			# If next pose is out of bounds, return and skip to next decision
+			if x < 0 or x == self._w or y < 0 or y == self._h:
+				return self.skip(last_state)
+
+			# Get neighbour of next pose
+			neighbour = self._arena[y,x]
+
+			# Move to predicted pose
+			self._agent.move(x, y, ang)
+
+			# get_agent_state next state
+			next_state = self.get_agent_state()
+
+			# If neighbour is the goal, finish episode
+			if neighbour == Entities.GOAL.value:
+				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
+		# action == ROT_LEFT or ROT_RIGHT
+		else:
+			# If next pose is out of bounds, neighbour is None
+			if x < 0 or x == self._w or y < 0 or y == self._h:
+				neighbour = None
 			else:
-				self.__agent.go_left()
+				neighbour = self._arena[y,x]
 
-		elif action == Actions.UP:
-			neighbour = self.__arena[self.__agent.y - 1, self.__agent.x]
-			if neighbour != Entities.EMPTY.value:
-				return self.reset(neighbour)
-			else:
-				self.__agent.go_up()
+			# Move to predicted pose
+			self._agent.move(x, y, ang)
 
-		elif action == Actions.RIGHT:
-			neighbour = self.__arena[self.__agent.y, self.__agent.x + 1]
-			if neighbour != Entities.EMPTY.value:
-				return self.reset(neighbour)
-			else:
-				self.__agent.go_right()
+			# get_agent_state next state
+			next_state = self.get_agent_state()
 
-		elif action == Actions.DOWN:
-			neighbour = self.__arena[self.__agent.y + 1, self.__agent.x]
-			if neighbour != Entities.EMPTY.value:
-				return self.reset(neighbour)
-			else:
-				self.__agent.go_down()
-				
-		self.__arena[self.__agent.y, self.__agent.x] = Entities.AGENT.value
+		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
-		next_obs = self.get_agent_state()
-		return next_obs, False, self.__reward_function(last_obs, action, next_obs, None), neighbour
+		# get_agent_state next state
+		next_state = self.get_agent_state()
+		return next_state, False, self.__reward_function(last_state, action, next_state, None), neighbour
 
 	def __generate_los(self):
 		# [left, up, right, down]
-		return [
-			self.__arena[self.__agent.y][self.__agent.x - 1],
-			self.__arena[self.__agent.y - 1][self.__agent.x],
-			self.__arena[self.__agent.y][self.__agent.x + 1],
-			self.__arena[self.__agent.y + 1][self.__agent.x],
-		]
+		# TODO: adapt to los dependent on the orientation
+		return (
+			self._arena[self._agent.y][self._agent.x - 1],
+			self._arena[self._agent.y - 1][self._agent.x],
+			self._arena[self._agent.y][self._agent.x + 1],
+		)
 	
 	def get_agent_state(self):
-		return (
-			self.__agent.x,
-			self.__agent.y,
-			self.__goal.x,
-			self.__goal.y,
+		return self.__agent_state((
+			self._agent.x,
+			self._agent.y,
+			self._agent.theta,
+			self._goal.x,
+			self._goal.y,
 			self.__generate_los()
 			)
+		)

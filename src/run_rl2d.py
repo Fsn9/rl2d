@@ -4,7 +4,9 @@ from graphics import GUI
 
 # Empty environment
 #env = EmptyEnvironment(6,6)
-env = Environment(6,6,2)
+#env = Environment(6,6)
+env = ObstacleEnvironment(6,6,2)
+print(env)
 
 # Hyperparameters
 learning_rate = 0.1
@@ -14,7 +16,7 @@ initial_epsilon = 1
 final_epsilon = 0.05
 
 # Agent
-agent = QLearner('simple', 'simple', learning_rate, discount_factor, episodes, initial_epsilon, final_epsilon, env)
+agent = QLearner(learning_rate, discount_factor, episodes, initial_epsilon, final_epsilon, env)
 
 # Graphics
 gui = GUI(agent, env)

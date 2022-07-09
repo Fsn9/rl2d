@@ -2,7 +2,7 @@ from enum import Enum
 from math import atan2
 from numpy import linspace, pi
 from random import random, choice
-from environment import Actions, DiscreteAngularSpace, DiscreteLineOfSightSpace, StateSimple, StateComplex, Entities
+from environment import *
 from collections import deque
 
 class StateAction:
@@ -45,15 +45,15 @@ class StateAction:
 			self.__q = self.__q + self.__initial_alpha / self.__num_visits * (reward + self.__gamma * max_q - self.__q)
 
 class QTable:
-	def __init__(self, env_width, env_height, alpha, gamma):
+	def __init__(self, env_width, env_height, alpha, gamma, state_space):
 		self.__table = []
 		self.__alpha = alpha
 		self.__gamma = gamma
-		self.__state_space = DiscreteAngularSpace(env_width, env_height)
+		self.__state_space = state_space
 		for state in self.__state_space():
 			for action in Actions:
 				self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
-
+		print(self.__table)		
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:
@@ -90,8 +90,6 @@ class QTable:
 
 class QLearner:
 	def __init__(self, 
-    observation_type, 
-	action_type,
     learning_rate, 
     discount_factor, 
     episodes,
@@ -99,8 +97,7 @@ class QLearner:
 	final_epsilon,
 	environment
     ):
-		self.__action_type = action_type
-		self.__alpha = learning_rate
+		self.__alpha = learning_rate 
 		self.__gamma = discount_factor
 		self.__current_gamma = self.__gamma
 		self.__episodes = episodes
@@ -111,7 +108,7 @@ class QLearner:
 		self.__final_epsilon = final_epsilon
 		self.__action_space = list(Actions)
 		self.__environment = environment
-		self.__qtable = QTable(self.__environment.w, self.__environment.h, self.__alpha, self.__gamma)
+		self.__qtable = QTable(self.__environment.w, self.__environment.h, self.__alpha, self.__gamma, self.__environment.state_space)
 		self.__cur_state, self.__next_state = [], []
 		self.__finished = False
 
