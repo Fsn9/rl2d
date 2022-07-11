@@ -193,7 +193,8 @@ class QLearner:
 
 		# 3. Act and observe again
 		next_obs, terminal, reward, neighbour = self.__environment.step(action)
-		print('[act], next_state:', next_obs)
+		print('[act], ns, t, nbr: ', next_obs, terminal, neighbour)
+		print('[act] reward value: ', reward)
 
 		# 4. If invalid action skip to next step
 		if neighbour == Entities.VOID.value:

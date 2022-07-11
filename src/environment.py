@@ -30,10 +30,6 @@ class StateComplex(StateSimple):
 		super().__init__()
 		self.__los = []
 	def _process(self, obs):
-		print('[process, complex,obs]:\n', obs)
-		print('[process, azi]:\n',super()._process(obs))
-		print('[process, obs[5]]:\n',obs[5])
-		print('[process, azi,obs[5]]:\n',super()._process(obs), obs[5])
 		return (super()._process(obs), obs[5])
 
 class Actions(Enum):
@@ -92,6 +88,9 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 		elif self.__shape == 'T':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 3 * self.__range)]
 			self.__vectors = np.array([[1,1,1],[1,0,-1]])
+		elif self.__shape == '.':
+			self._space = [los for los in product([ent for ent in los_entities], repeat = 1 * self.__range)]
+			self.__vectors = np.array([[1],[0]])
 		else: # shape == '*'
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 6 * self.__range)]
 	@property
@@ -182,36 +181,71 @@ class RewardFunction:
 	COLLISION_PENALTY = -1
 	UNDEFINED = 0
 
-	def __init__(self, state_space):
-		self.__state_space = state_space.space
+	def __init__(self, environment):
+		self.__environment = environment
 		self.__max_angle_variation = round(abs(atan2(1, -1)),2)
 		self.__den = 2 * self.__max_angle_variation
 		self.__inv_den = 1.0 / self.__den
-
+		self.__k = 0.7
+		if isinstance(self.__environment, ObstacleEnvironment):
+			self.reward = self.collision_avoidance
+		else:
+			self.reward = self.collision_free
 	def __call__(self, cur_state, action, next_state, event = None):
-		#if cur_state is None or next_state is None:
-		#	return self.UNDEFINED
-		#if event is Entities.VOID.value:
-		#	return self.UNDEFINED
+		print('[RewardFunction] processing...')
+		if any(cur_state) and any(next_state):
+			print('[RewardFunction] returning real value')
+			return self.reward(cur_state, action, next_state, event)
+		else:
+			print('[RewardFunction] returning UNDEFINED')
+			return self.UNDEFINED
 
-		if next_state == 0.0 or event == Entities.GOAL.value:
+	def collision_free(self, cur_state, action, next_state, event = None):
+		if (next_state == 0.0 or event == Entities.GOAL.value):
 			print('reward: GOAL')
 			return self.GOAL_PRIZE
 
 		elif event is None:
-			print('reward: normal NAO ESQUECER DE MUDAR!')
-			return 1
-			return self.normalize(-self.__max_angle_variation, 
-				self.__max_angle_variation, 
-				abs(cur_state) - abs(next_state)
-			)
+			print('reward: goal reaching')
+			return self.goal_reaching(cur_state, next_state)
 
 		elif event == Entities.OBSTACLE.value:
 			print('reward: COLLIDED')
 			return self.COLLISION_PENALTY
 
 		else:
+			print('reward: undefined')
 			return self.UNDEFINED
+
+	def collision_avoidance(self, cur_state, action, next_state, event = None):
+		# 1. Goal reached
+		if next_state[0] == 0 or event == Entities.GOAL.value and Entities.OBSTACLE.value != next_state[1]:
+			print('reward: GOAL')
+			return self.GOAL_PRIZE
+		# 2. Obstacle collision
+		elif event == Entities.OBSTACLE.value:
+			print('reward: COLLIDED')
+			return self.COLLISION_PENALTY
+		# 3. If normal navigation
+		elif event is None:
+			if Entities.OBSTACLE.value != next_state[1] or Entities.OBSTACLE.value != cur_state[1]:
+				print('reward: obstacle avoidance')
+				return self.__k * self.obstacle_avoidance(cur_state[1], next_state[1]) \
+				+ (1 - self.__k) * self.goal_reaching(cur_state[0], next_state[0])
+			else:
+				print('reward: obstacle avoidance')
+				return self.goal_reaching(cur_state[0], next_state[0])
+		else:
+			print('reward: undefined')
+			return self.UNDEFINED
+
+	def goal_reaching(self, cur_state, next_state):
+		return self.normalize(-self.__max_angle_variation, 
+				self.__max_angle_variation, 
+				abs(cur_state) - abs(next_state)
+				)
+	def obstacle_avoidance(self, cur_state, next_state):
+		return next_state - cur_state
 
 	# normalize between [-1, 1]
 	def normalize(self, min, max, val):
@@ -232,7 +266,7 @@ class Environment(ABC):
 		self._state_space = DiscreteAngularSpace(self._w, self._h)
 
 		# Reward function
-		self.__reward_function = RewardFunction(self._state_space)
+		self._reward_function = RewardFunction(self)
 
 		# Auxiliar variables
 		self._cur_state = []
@@ -305,7 +339,6 @@ class EmptyEnvironment(Environment):
 	def __init__(self, w, h):
 		self.__agent_state = StateSimple()
 		super().__init__(w,h)
-		self.__reward_function = RewardFunction(self._state_space)
 		self.reset()
 
 	def reset(self, event = None):
@@ -345,7 +378,7 @@ class EmptyEnvironment(Environment):
 
 			# If neighbour is the goal, finish episode
 			if neighbour == Entities.GOAL.value:
-				return next_state, True, self.__reward_function(last_state, action, next_state, neighbour), neighbour
+				return next_state, True, self._reward_function(last_state, action, next_state, neighbour), neighbour
 		# action == ROT_LEFT or ROT_RIGHT
 		else:
 			# If next pose is out of bounds, neighbour is None
@@ -364,7 +397,7 @@ class EmptyEnvironment(Environment):
 
 		# get_agent_state next state
 		next_state = self.get_agent_state()
-		return next_state, False, self.__reward_function(last_state, action, next_state, None), neighbour
+		return next_state, False, self._reward_function(last_state, action, next_state, None), neighbour
 
 	def get_agent_state(self):
 		return self.__agent_state(
@@ -396,12 +429,9 @@ class ObstacleEnvironment(Environment):
 		self._entities[Entities.OBSTACLE] = self.__obstacles
 
 		# State space
-		self.__los_state_space = DiscreteLineOfSightSpace(1,'T')
+		self.__los_state_space = DiscreteLineOfSightSpace(1,'.')
 		self._state_space.concat(self.__los_state_space)
 		print('State space len:', len(self._state_space))
-
-		# Reward
-		self.__reward_function = RewardFunction(self._state_space)
 
 		# Auxiliar variables
 		self.__translation_walls = np.array([1,1]).reshape(2,1)
@@ -416,7 +446,7 @@ class ObstacleEnvironment(Environment):
 		self._place_entity_random(Entities.AGENT)
 		self._place_entity_random(Entities.GOAL)
 		self.__generate_obstacles(self.__num_obstacles)
-		return self.get_agent_state(terminal), terminal, 0, event # Change this to reward function
+		return self.get_agent_state(terminal), terminal, self._reward_function(self._cur_state, action, self._next_state, event), event # Change this to reward function
 
 	def _build_arena(self):
 		self._arena = np.zeros((self._w + 2, self._h + 2), dtype = np.int8)
@@ -498,7 +528,7 @@ class ObstacleEnvironment(Environment):
 		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value
 		print('after step:\n', self._arena)
 
-		return self._next_state, False, self.__reward_function(self._cur_state, action, self._next_state, None), neighbour
+		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def __generate_los(self, terminal = False):
 		print('[__generate_los]:', terminal)
@@ -515,16 +545,17 @@ class ObstacleEnvironment(Environment):
 		los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors) + translation_agent + self.__translation_walls).astype(np.int8)
 		print('x,y,ang: ', self._agent.x, self._agent.y, self._agent.theta)
 		print('los_positions:\n', los_positions)
-		print((
-			self._arena[los_positions[1,0]][los_positions[0,0]],
-			self._arena[los_positions[1,1]][los_positions[0,1]],
-			self._arena[los_positions[1,2]][los_positions[0,2]]
-		))
-		return (
-			self._arena[los_positions[1,0]][los_positions[0,0]],
-			self._arena[los_positions[1,1]][los_positions[0,1]],
-			self._arena[los_positions[1,2]][los_positions[0,2]]
-		)
+		#print((
+		#	self._arena[los_positions[1,0]][los_positions[0,0]],
+		#	self._arena[los_positions[1,1]][los_positions[0,1]],
+		#	self._arena[los_positions[1,2]][los_positions[0,2]]
+		#))
+		return self._arena[los_positions[1,0]][los_positions[0,0]]
+		#return (
+		#	self._arena[los_positions[1,0]][los_positions[0,0]],
+		#	self._arena[los_positions[1,1]][los_positions[0,1]],
+		#	self._arena[los_positions[1,2]][los_positions[0,2]]
+		#)
 	
 	def get_agent_state(self, terminal = False):
 		return self.__agent_state((
