@@ -15,9 +15,9 @@ class StateAction:
 		self.__gamma = gamma
 		self.__num_visits = 0
 	def __repr__(self):
-		return "("+str(self.__state)+","+str(self.__action)+")\n"
+		return "("+str(self.__state)+","+str(self.__action)+"), q: "+str(self.__q)+", nv: "+str(self.num_visits)+"\n"
 	def __str__(self):
-		return "("+str(self.__state)+","+str(self.__action)+")\n"
+		return "("+str(self.__state)+","+str(self.__action)+"), q: "+str(self.__q)+", nv: "+str(self.num_visits)+"\n"
 	def __eq__(self, other):
 		return self.__state == other.state and self.__action == other.action
 	@property
@@ -53,11 +53,14 @@ class QTable:
 		for state in self.__state_space():
 			for action in Actions:
 				self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
+		print(self)
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:
 			repr_ += str(sa)
 		return repr_
+	def __str__(self):
+		return self.__repr__()
 	
 	@property
 	def table(self):
@@ -126,6 +129,10 @@ class QLearner:
 		self.__episodic_steps_sums = deque(maxlen = self.__window_size_steps_moving_avg)
 		self.__mov_avg_steps = 0
 
+		## Auxiliar variables
+		self.__cur_state = []
+		self.__next_state = []
+
 	@property
 	def alpha(self):
 		return self.__alpha
@@ -177,24 +184,29 @@ class QLearner:
 
 	def act(self):
 		# 1. Observe
+		print('[act], observing')
 		obs, _, _, _ = self.__environment.observe()
 
 		# 2. Decide
 		action = self.decide(obs)
+		print('[act], cur_state:', obs)
 
 		# 3. Act and observe again
 		next_obs, terminal, reward, neighbour = self.__environment.step(action)
+		print('[act], next_state:', next_obs)
 
 		# 4. If invalid action skip to next step
 		if neighbour == Entities.VOID.value:
 			return
-
+		print('[act] will learn, cur, next:', obs, next_obs)
 		# 5. Learn
 		self.learn(obs, next_obs, action, reward, terminal, neighbour)
 
 		# 6. If terminal state then reset environment
 		if terminal:
+			print('[act] Quitting. terminal: True')
 			self.__environment.reset()
+		print('[act] Quitting. terminal: False\n')
 		return terminal
 
 	def decide(self, state):
@@ -237,6 +249,8 @@ class QLearner:
 		print('Visited percentage (%): ', 100 * visited_sa_pairs / len(self.__qtable.table))
 		print('Moving average reward: ', self.__mov_avg_reward)
 		print('Moving average steps: ', self.__mov_avg_steps)
+		f = open("table.txt","w")
+		f.write(str(self.__qtable))
 
 	def get_stats(self):
 		return self.__mov_avg_steps, \

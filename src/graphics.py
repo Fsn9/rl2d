@@ -33,6 +33,9 @@ class GUI(tk.Tk):
 
         # save environment
         self.__environment = environment
+        self.__env_with_walls = False
+        if isinstance(self.__environment, ObstacleEnvironment):
+            self.__env_with_walls = True
 
         # define objects containing rectangles of food and snake
         self.__agent_gui = []
@@ -42,10 +45,16 @@ class GUI(tk.Tk):
 
         # @TODO: put this in json or yaml
         num_obstacles = 0
-        self.__grid_width, self.__grid_height, self.big_side = self.__environment.w, self.__environment.h, 400
-
-        self.__pixel_size, self.width, self.height = compute_pixel_size(self.__grid_width + 2,
-            self.__grid_height + 2,
+        #print('Graphics, envw, envh:',self.__environment.w, self.__environment.h)
+        if self.__env_with_walls:
+            #print('Graphics, obstacleenv')
+            self.__grid_width, self.__grid_height, self.big_side = self.__environment.w + 2, self.__environment.h + 2, 400
+        else:
+            #print('Graphics, emptyenv')
+            self.__grid_width, self.__grid_height, self.big_side = self.__environment.w, self.__environment.h, 400
+        #print('Graphics, gw, gh:',self.__grid_width, self.__grid_height)
+        self.__pixel_size, self.width, self.height = compute_pixel_size(self.__grid_width,
+            self.__grid_height,
             self.big_side
         )
 
@@ -53,6 +62,7 @@ class GUI(tk.Tk):
         self.title("rl2d")
 
         # set geometry
+        #print('Graphics w,h:', self.width, self.height)
         self.geometry(str(self.width) + "x" + str(self.height))
 
         # string length limit
@@ -119,28 +129,36 @@ class GUI(tk.Tk):
         for y in range(1, self.__grid_height + 2):
             self.draw_rectangle(0, y, 'brown')
         for x in range(1, self.__grid_width + 2):
-            self.draw_rectangle(x, self.__grid_height + 1, 'brown')
+            self.draw_rectangle(x, self.__grid_height - 1, 'brown')
         for y in range(1, self.__grid_height + 2):
-            self.draw_rectangle(self.__grid_width + 1, y, 'brown')
+            self.draw_rectangle(self.__grid_width - 1, y, 'brown')
 
     def draw_agent(self):
-        # Agent body and orientation
         agent_pos = self.__environment.entities[Entities.AGENT].pos
         agent_ori = self.__environment.entities[Entities.AGENT].theta
-        mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
-        self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
+        if self.__env_with_walls:
+            #print('Graphics: drawing agent with walls')
+            mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
+            self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
+            #print('Graphics, agent_pos: ', agent_pos[0] + 1, agent_pos[1] + 1)
+        else:
+            mid_pos_translated = agent_pos[0] + 0.5, agent_pos[1] + 0.5
+            self.__agent_gui = self.draw_rectangle(agent_pos[0], agent_pos[1], 'white')
         self.__agent_orientation_gui = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
 
     def draw_goal(self):
-        # Goal
         goal_pos = self.__environment.entities[Entities.GOAL].pos
-        self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
+        #print('Graphics, goal_pos: ', goal_pos)
+        if self.__env_with_walls:
+            self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
+        else:
+            self.__goal_gui = self.draw_rectangle(goal_pos[0], goal_pos[1], 'red')
 
     def draw_obstacles(self):
         # Obstacles
         obstacles = self.__environment.entities[Entities.OBSTACLE]
         for obstacle in obstacles:
-            self.__obstacles_gui.append(self.draw_rectangle(obstacle.pos[0] + 1, obstacle.pos[1], 'brown'))
+            self.__obstacles_gui.append(self.draw_rectangle(obstacle.pos[0] + 1, obstacle.pos[1] + 1, 'brown'))
 
     def draw_stats(self):
         # Statistics
@@ -156,15 +174,19 @@ class GUI(tk.Tk):
     def draw_simple(self):
         self.draw_agent()
         self.draw_goal()
+        self.draw_stats()
 
     def draw_complex(self):
         self.draw_simple()
         self.draw_obstacles()
+        self.draw_stats()
 
     def clear(self):
         self.__canvas.delete(self.__agent_gui)
         self.__canvas.delete(self.__goal_gui)
         self.__canvas.delete(self.__agent_orientation_gui)
+        for obs_gui in self.__obstacles_gui:
+            self.__canvas.delete(obs_gui)
         self.__canvas.delete(self.__obstacles_gui)
 
     def repaint(self):
@@ -187,5 +209,4 @@ class GUI(tk.Tk):
             if terminal:
                 print('episodes: ', self.__learner.episodes_passed)
             self.repaint()
-
-        self.after(1000, self.run_rl)
+        self.after(5000, self.run_rl)
