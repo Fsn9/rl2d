@@ -427,73 +427,55 @@ class Environment(ABC):
 
 class EmptyEnvironment(Environment):
 	def __init__(self, w, h, action_type = 'simple'):
-		# Auxiliar variables
-		self._cur_state, self._next_state = StateSimple(), StateSimple()
-		#self.__agent_state = StateSimple()
-		super().__init__(w, h, action_type)
-		self.reset()
-		print(self._state_space)
-		#exit()
+		self._cur_state, self._next_state = StateSimple(), StateSimple() # Initializing states
+		super().__init__(w, h, action_type) # Initializing arena, reward, state space, action space and entities
+		self.reset() # Reseting arena
 
 	def reset(self):
-		print('>>>Reseting')
+		print('>>> Reseting')
 		self._build_arena()
 		self._place_entity_random(Entities.AGENT)
 		self._place_entity_random(Entities.GOAL)
-		# Define initial state
-		self._cur_state(self.make_state())
+		self._cur_state(self.make_state()) # Define initial state
 
 	# When invalid action, skip to next iteration
 	def skip(self):
-		print('[skip]')
+		print('>>> Skipping')
 		return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
 
 	def step_simple(self, action):
-		# Clean old agent info
-		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value
+		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value # Clean old agent info in the arena
 
-		x, y, ang = self._agent.kinematics(action)
+		x, y, ang = self._agent.kinematics(action) # Predict next pose
+
+		if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
+			return self.skip()
 
 		# Choose action
 		if action == Actions.FWD:
-			# If next pose is out of bounds, return and skip to next decision
-			if x < 0 or x >= self._w or y < 0 or y >= self._h:
-				return self.skip()
-
-			# Get neighbour of next pose
-			neighbour = self._arena[y,x]
-
-			# If neighbour is the goal, finish episode
-			if neighbour == Entities.GOAL.value:
-				print('[step] Actions.FWD - Got goal, reseting')
+			neighbour = self._arena[y,x] # Get neighbour of next pose
+			
+			if neighbour == Entities.GOAL.value: # If neighbour is the goal, finish episode
 				self.reset()
 				return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
 
-			# Move to predicted pose
-			self._agent.move(x, y, ang)
+			self._agent.move(x, y, ang) # Move to predicted pose
 
-			# Observe next state
-			self._next_state(self.make_state())
+			self._next_state(self.make_state())	# Observe next state
 	
 		else: # action == ROT_LEFT or ROT_RIGHT
-			# If next pose is out of bounds, neighbour is None
-			if x < 0 or x == self._w or y < 0 or y == self._h:
-				print('[step] Actions.ROT - Out of bounds')
+			if x < 0 or x == self._w or y < 0 or y == self._h: # If next pose is out of bounds, neighbour is None
 				neighbour = None
 			else:
 				neighbour = self._arena[y,x]
-
-			# If got goal, quit
-			if neighbour == Entities.GOAL.value:
-				print('[step] Actions.ROT - Got goal, reseting')
+			
+			if neighbour == Entities.GOAL.value: # If got goal, quit
 				self.reset()
 				return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
 
-			# Move to predicted pose
-			self._agent.move(x, y, ang)
+			self._agent.move(x, y, ang) # Move to predicted pose
 
-			# Observe after acting
-			self._next_state(self.make_state())
+			self._next_state(self.make_state()) 			# Observe after acting
 
 		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
