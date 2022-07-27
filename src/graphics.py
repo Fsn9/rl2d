@@ -1,4 +1,4 @@
-import tkinter as tk
+import tkinter as tk    
 import matplotlib.pyplot as plt
 from math import sin, cos
 from environment import EmptyEnvironment, ObstacleEnvironment, Entities
@@ -67,6 +67,8 @@ class GUI(tk.Tk):
 
         # string length limit
         self.__str_len_limit = 6
+        self.__sim_time = tk.IntVar()
+        self.__sim_time.set(1)
 
         # draw canvas
         self.__canvas = self.create_canvas(self.width, self.height, "black")
@@ -83,6 +85,9 @@ class GUI(tk.Tk):
         self.label_gamma_val = self.create_label(str(self.__learner.current_gamma),4,1)
         self.label_episodes_left = self.create_label('EpisodesLeft:',5,0)
         self.label_episodes_left_val = self.create_label(str(self.__learner.episodes_left),5,1)
+        self.label_slider_time = self.create_label("Simulation time:", 6,0)
+        self.label_slider_time_slider = tk.Scale(from_ = 1, to = 5000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
+        self.label_slider_time_slider.grid(row = 6, column = 1)
         #self.label_collisions_wall = self.create_label('Wall collisions:',6,0)
         #self.label_collisions_wall_val = self.create_label(str(self.__learner.counter_collisions_with_wall),6,1)
         #self.label_collisions_itself = self.create_label('Self collisions:',7,0)
@@ -188,10 +193,14 @@ class GUI(tk.Tk):
         for obs_gui in self.__obstacles_gui:
             self.__canvas.delete(obs_gui)
         self.__canvas.delete(self.__obstacles_gui)
+        self.__obstacles_gui.clear()
 
     def repaint(self):
         self.clear()
         self.draw()
+
+    def __change_sim_time(self, val):
+        self.__sim_time.set(val)
 
     def run_rl(self):
         if self.__learner.finished:
@@ -209,4 +218,4 @@ class GUI(tk.Tk):
             if terminal:
                 print('episodes: ', self.__learner.episodes_passed)
             self.repaint()
-        self.after(5000, self.run_rl)
+        self.after(self.__sim_time.get(), self.run_rl)

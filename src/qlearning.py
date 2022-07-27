@@ -19,7 +19,7 @@ class StateAction:
 	def __str__(self):
 		return "("+str(self.__state)+","+str(self.__action)+"), q: "+str(self.__q)+", nv: "+str(self.num_visits)+"\n"
 	def __eq__(self, other):
-		return self.__state == other.state and self.__action == other.action
+		return self.__state.__eq__(other.state) and self.__action == other.action
 	@property
 	def state(self):
 		return self.__state
@@ -45,15 +45,22 @@ class StateAction:
 			self.__q = self.__q + self.__initial_alpha / self.__num_visits * (reward + self.__gamma * max_q - self.__q)
 
 class QTable:
-	def __init__(self, env_width, env_height, alpha, gamma, state_space):
+	def __init__(self, environment, alpha, gamma, state_space):
 		self.__table = []
 		self.__alpha = alpha
 		self.__gamma = gamma
 		self.__state_space = state_space
-		for state in self.__state_space():
-			for action in Actions:
-				self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
-		print(self)
+		self.__environment = environment
+		if self.__environment.action_type == 'simple':
+			for state in self.__state_space():
+				for action in Actions:
+					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
+		else:
+			for state in self.__state_space():
+				for action in ActionsComplex:
+					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
+
+		print(f'Q table of len {len(self)} was created: {self}')
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:
@@ -61,6 +68,8 @@ class QTable:
 		return repr_
 	def __str__(self):
 		return self.__repr__()
+	def __len__(self):
+		return len(self.__table)
 	
 	@property
 	def table(self):
@@ -108,9 +117,9 @@ class QLearner:
 		self.__initial_epsilon = initial_epsilon
 		self.__current_epsilon = self.__initial_epsilon
 		self.__final_epsilon = final_epsilon
-		self.__action_space = list(Actions)
 		self.__environment = environment
-		self.__qtable = QTable(self.__environment.w, self.__environment.h, self.__alpha, self.__gamma, self.__environment.state_space)
+		self.__action_space = list(Actions) if self.__environment.action_type == 'simple' else list(ActionsComplex)
+		self.__qtable = QTable(self.__environment, self.__alpha, self.__gamma, self.__environment.state_space)
 		self.__cur_state, self.__next_state = [], []
 		self.__finished = False
 
@@ -184,34 +193,39 @@ class QLearner:
 
 	def act(self):
 		# 1. Observe
-		print('[act], observing')
-		obs, _, _, _ = self.__environment.observe()
-
+		print('\n[act], observing')
+		obs = self.__environment.observe()
 		# 2. Decide
 		action = self.decide(obs)
 		print('[act], cur_state:', obs)
+		print('[act], action:', action)
 
 		# 3. Act and observe again
+		#print('3 [act] arena: \n',self.__environment)
+		#print('3 [act] agent_pos: ', self.__environment.agent.pos)
+		#print(f'3 [act] obs before step: {obs}')
 		next_obs, terminal, reward, neighbour = self.__environment.step(action)
-		print('[act], ns, t, nbr: ', next_obs, terminal, neighbour)
-		print('[act] reward value: ', reward)
+		#print(f'3 [act] obs after step: {obs}')
+		#print(f'3 [act] obs: {obs}')
 
 		# 4. If invalid action skip to next step
 		if neighbour == Entities.VOID.value:
-			return
+			print('[act] neighbour is VOID')
+			return False
+		print('[act] next_obs, t, nbr: ', next_obs, terminal, neighbour)
+		print('[act] reward value: ', reward)
 		print('[act] will learn, cur, next:', obs, next_obs)
 		# 5. Learn
 		self.learn(obs, next_obs, action, reward, terminal, neighbour)
 
-		# 6. If terminal state then reset environment
-		if terminal:
-			print('[act] Quitting. terminal: True')
-			self.__environment.reset()
-		print('[act] Quitting. terminal: False\n')
+		# 6. Update current state
+		obs.get_data_from(next_obs)
+		print(f'[act] Quitting. terminal: {terminal}\n')
 		return terminal
 
 	def decide(self, state):
 		self.__current_steps_sum += 1
+		print(f'decide({state})')
 		if random() > self.__current_epsilon:
 			print('action: GREEDY')
 			return self.__qtable.get_greedy_action(state)
@@ -222,6 +236,7 @@ class QLearner:
 	def learn(self, cur_state, next_state, action, reward, terminal, neighbour):
 		self.__cur_state, self.__next_state = cur_state, next_state
 		self.__current_reward_sum += reward
+
 		if terminal:
 			self.__episodes_passed += 1
 			self.__episodes_left -= 1
@@ -234,12 +249,14 @@ class QLearner:
 			self.__mov_avgs_reward.append(self.__mov_avg_reward)
 			self.__mov_avgs_steps.append(self.__mov_avg_steps)
 			self.__current_reward_sum, self.__current_steps_sum = 0, 0
+			print(f'>> Episodes left: {self.__episodes_left}')
 			if self.__episodes_passed == self.__episodes:
 				self.__finished = True
 
 		max_q = self.__qtable.get_q(next_state, self.__qtable.get_greedy_action(next_state))
 		sa = self.__qtable.get_sa(cur_state, action)
 		sa.update_q(reward, max_q, terminal)
+		print(f'[learn] sa {sa} updated')
 
 	def print_result(self):
 		visited_sa_pairs = 0
