@@ -63,7 +63,8 @@ class GUI(tk.Tk):
 
         # set geometry
         #print('Graphics w,h:', self.width, self.height)
-        self.geometry(str(self.width) + "x" + str(self.height))
+        self.extra_length = 300
+        self.geometry(str(self.width) + "x" + str(self.height + self.extra_length))
 
         # string length limit
         self.__str_len_limit = 6
