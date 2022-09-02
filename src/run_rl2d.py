@@ -1,9 +1,18 @@
 from qlearning import *
 from environment import *
 from graphics import GUI
+import sys
+
+# Read args
+if len(sys.argv) == 1:
+	env_dim, action_complexity = 5, 'simple'
+elif len(sys.argv) == 2:
+	env_dim, action_complexity = int(sys.argv[1]), 'simple'
+elif len(sys.argv) == 3:
+	env_dim, action_complexity = int(sys.argv[1]), sys.argv[2]
 
 # Empty environment
-env = EmptyEnvironment(5,5)
+env = EmptyEnvironment(env_dim, env_dim, action_complexity)
 #env = ObstacleEnvironment(3,3,2,'complex','.')
 print(env)
 
