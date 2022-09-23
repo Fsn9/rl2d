@@ -2,6 +2,7 @@ import tkinter as tk
 import matplotlib.pyplot as plt
 from math import sin, cos
 from environment import EmptyEnvironment, ObstacleEnvironment, Entities
+import os
 
 def compute_pixel_size(grid_width, grid_height, big_side):
     if grid_width > grid_height:
@@ -206,12 +207,18 @@ class GUI(tk.Tk):
     def run_rl(self):
         if self.__learner.finished:
             print('Learning is finished!')
-            self.__learner.print_result()
+            folder_path, time_string = self.__learner.export_results()
             plt.title('Reward')
             plt.plot([x for x in range(len(self.__learner.mov_avgs_reward))], self.__learner.mov_avgs_reward)
+            plt.xlabel("Episodes")
+            plt.ylabel("Value")
+            plt.savefig(os.path.join(folder_path, 'reward-' + time_string + '.png'), bbox_inches='tight')
             plt.show()
             plt.title('Steps')
             plt.plot([x for x in range(len(self.__learner.mov_avgs_steps))], self.__learner.mov_avgs_steps)
+            plt.xlabel("Episodes")
+            plt.ylabel("Value")
+            plt.savefig(os.path.join(folder_path, 'steps-' + time_string + '.png'), bbox_inches='tight')
             plt.show()
             exit()
         else:

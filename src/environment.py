@@ -1,26 +1,30 @@
-from random import randint
+from random import randint, choice
 from enum import Enum
 import numpy as np
 from math import atan2, pi, cos, sin, isclose
 from itertools import product
 from abc import ABC, abstractmethod
 
-PI = round(pi,2)
-PI_2 = round(pi * 0.5, 2)
-PI_4 = round(pi * 0.25, 2)
-TWO_PI = round(2 * pi, 2)
-FLOAT_TOLERANCE = 0.1
+DECIMAL_PLACES = 3
+PI = round(pi, DECIMAL_PLACES)
+PI_2 = round(pi * 0.5, DECIMAL_PLACES)
+PI_4 = round(pi * 0.25, DECIMAL_PLACES)
+TWO_PI = round(2 * pi, DECIMAL_PLACES)
 
 class StateSimple:
-	def __init__(self, azimuth = 0.0):
+	def __init__(self, space, azimuth = 0.0):
 		self._azimuth = azimuth
+		self._space = space
 
 	def __call__(self, obs):
 		return self._process(obs)
 
 	def __eq__(self, other):
 		return self._azimuth == other.azimuth
-		#return isclose(self._azimuth, other.azimuth, abs_tol = FLOAT_TOLERANCE)
+
+	@property
+	def space(self):
+		return self._space
 
 	def __repr__(self):
 		return 'Ss (' + str(self._azimuth) + ')'
@@ -33,26 +37,44 @@ class StateSimple:
 		self._azimuth = other.azimuth
 
 	def _process(self, obs):
+		## prev
 		gx_ag, gy_ag = obs[3] - obs[0], obs[4] - obs[1]
-		cos_rot, sin_rot = round(cos(obs[2]),2), round(sin(obs[2]), 2)
-		#self._azimuth = round(atan2(-sin_rot * gx_ag + cos_rot * gy_ag,
-		#	cos_rot * gx_ag + sin_rot * gy_ag), 2)
-		self._azimuth = round(atan2(sin_rot * gx_ag - cos_rot * gy_ag,
-			cos_rot * gx_ag + sin_rot * gy_ag), 2)
+		## other approach
+		#gx_ag, gy_ag = obs[3] - obs[0], obs[1] - obs[4]
+		cos_rot, sin_rot = cos(obs[2]), sin(obs[2])
+		# self._azimuth = round(atan2(-sin_rot * gx_ag + cos_rot * gy_ag, cos_rot * gx_ag + sin_rot * gy_ag), DECIMAL_PLACES)
+		## prev
+		self._azimuth = round(atan2(round(sin_rot * gx_ag - cos_rot * gy_ag), round(cos_rot * gx_ag + sin_rot * gy_ag)), DECIMAL_PLACES)
+		## other approach
+		#self._azimuth = round(atan2(round(sin_rot * gx_ag + cos_rot * gy_ag), round(cos_rot * gx_ag - sin_rot * gy_ag)), DECIMAL_PLACES)
+		print('\taz_y:',round(sin_rot * gx_ag - cos_rot * gy_ag))
+		print('\taz_x:',round(cos_rot * gx_ag + sin_rot * gy_ag))
+		print('\taz_y_raw:', sin_rot * gx_ag - cos_rot * gy_ag)
+		print('\taz_x_raw:', cos_rot * gx_ag + sin_rot * gy_ag)
+		print('\ta_x:', obs[0])
+		print('\ta_y:',obs[1])
+		print('\ta_th:',obs[2])
+		print('\tg_x:',obs[3])
+		print('\tg_y:',obs[4])
 		# because the state space does not have -PI and PI is the same as -PI
-		self._azimuth = PI if isclose(self._azimuth, -PI, abs_tol = FLOAT_TOLERANCE) else self._azimuth 
+		if self._azimuth == -PI: self._azimuth = PI
 		return self
 
 class StateComplex(StateSimple):
-	def __init__(self, azimuth = 0.0, los = ()):
+	def __init__(self, space, azimuth = 0.0, los = ()):
 		super().__init__(azimuth)
 		self.__los = los
+		self.__space = space
 
 	def __repr__(self):
 		return "Sc (" + str(self._azimuth) + "," + str(self.__los) + ")"
 
 	def __eq__(self, other):
-		return isclose(self._azimuth, other.azimuth, abs_tol = FLOAT_TOLERANCE) and self.__los == other.los
+		return self._azimuth == other.azimuth and self.__los == other.los
+
+	@property
+	def space(self):
+		return self.__space
 
 	@property
 	def los(self):
@@ -68,11 +90,11 @@ class StateComplex(StateSimple):
 		return self
 
 class ActionsComplex(Enum):
-	ROT_LEFT = -0.5 * PI
-	FWD_LEFT = -0.25 * PI
+	ROT_LEFT = -PI_2
+	FWD_LEFT = -PI_4
 	FWD = 0
-	FWD_RIGHT = 0.25 * PI
-	ROT_RIGHT = 0.5 * PI
+	FWD_RIGHT = PI_4
+	ROT_RIGHT = PI_2
 
 class Actions(Enum):
 	ROT_LEFT = -1
@@ -86,6 +108,8 @@ class DiscreteSpace:
 		return self._space
 	def __repr__(self):
 		return str(self._space)
+	def __str__(self):
+		return str(self._space)
 	def __len__(self):
 		return len(self._space)
 	@property
@@ -98,7 +122,7 @@ class DiscreteSpace:
 		space_aux = []
 		for elem1 in self._space:
 			for elem2 in other.space:
-				space_aux.append(StateComplex(elem1.azimuth, elem2))
+				space_aux.append(StateComplex(self._space, elem1.azimuth, elem2))
 		self._space = space_aux
 
 class DiscreteAngularSpace(DiscreteSpace):
@@ -106,21 +130,43 @@ class DiscreteAngularSpace(DiscreteSpace):
 		super().__init__()
 		self.__width, self.__height = width, height
 		self.__generate_space()
+
 	def __generate_space(self):
+		dims = self.expand_dims((self.__height, self.__width))
 		space_aux = []
-		for y in range(self.__height):
-			for x in range(self.__width):
-				if x == 0 and y == 0: continue
-				space_aux.append(round(atan2(y,x), 2))
-				space_aux.append(round(atan2(-y,x), 2))
-				space_aux.append(round(atan2(-y,-x), 2))
-				space_aux.append(round(atan2(y,-x), 2))
+		for y in range(dims[0]):
+			for x in range(dims[1]):
+				space_aux.append(round(atan2(y,x), DECIMAL_PLACES))
+				space_aux.append(round(atan2(-y,x), DECIMAL_PLACES))
+				space_aux.append(round(atan2(-y,-x), DECIMAL_PLACES))
+				space_aux.append(round(atan2(y,-x), DECIMAL_PLACES))
 
 		space_aux = list(dict.fromkeys(space_aux))
 		space_aux.sort()
 		
 		for elem in space_aux: 
-			self._space.append(StateSimple(elem))
+			self._space.append(StateSimple(self._space, elem))
+	@property
+	def raw_repr(self):
+		sr = []
+		for state in self._space:
+			sr.append(state.azimuth)
+		return sr
+
+	# Depending on the grid resolution one needs to consider augmented state spaces
+	# 9 is the maximum state space dimension
+	@staticmethod
+	def expand_dims(dims):
+		dims_map = {
+			(3,3) : (3,3),
+			(4,4) : (5,5),
+			(5,5) : (6,6),
+			(6,6) : (7,7),
+			(7,7) : (9,9),
+			(8,8) : (10,10),
+			(9,9) : (12,12)
+		}
+		return dims_map[dims]
 
 class DiscreteLineOfSightSpace(DiscreteSpace):
 	def __init__(self, range, shape = 'T'):
@@ -219,11 +265,13 @@ class EnvAgent(EnvEntity):
 			#if x < 0 or y < 0:
 			#	print('\n\t\t\t SKIP x,y:', x,y)
 			#	return self._pos[0], self._pos[1], self.__theta
-			return int(round(self._pos[0] + cos(self.__theta))), int(round(self._pos[1] + sin(self.__theta))), self.__theta
+			return int(round(self._pos[0] + cos(self.__theta))), \
+			int(round(self._pos[1] + sin(self.__theta))), \
+			self.__theta
 		elif action == Actions.ROT_LEFT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_2), 2)
+			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_2), DECIMAL_PLACES)
 		elif action == Actions.ROT_RIGHT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_2), 2)
+			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_2), DECIMAL_PLACES)
 		else:
 			raise Exception('Not a valid action')
 
@@ -236,21 +284,22 @@ class EnvAgent(EnvEntity):
 		elif action == ActionsComplex.FWD_LEFT:
 			return int(round(self._pos[0] + cos(self.__theta + ActionsComplex.FWD_LEFT.value))), \
 			int(round(self._pos[1] + sin(self.__theta + ActionsComplex.FWD_LEFT.value))), \
-			round(self.normalize_angle(self.__theta + ActionsComplex.FWD_LEFT.value), 2)
+			round(self.normalize_angle(self.__theta + ActionsComplex.FWD_LEFT.value), DECIMAL_PLACES)
 
 		elif action == ActionsComplex.FWD_RIGHT:
 			return int(round(self._pos[0] + cos(self.__theta + ActionsComplex.FWD_RIGHT.value))), \
 			int(round(self._pos[1] + sin(self.__theta + ActionsComplex.FWD_RIGHT.value))), \
-			round(self.normalize_angle(self.__theta + ActionsComplex.FWD_RIGHT.value), 2)
+			round(self.normalize_angle(self.__theta + ActionsComplex.FWD_RIGHT.value), DECIMAL_PLACES)
 
 		elif action == ActionsComplex.ROT_LEFT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_2), 2)
+			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_2), DECIMAL_PLACES)
 
 		elif action == ActionsComplex.ROT_RIGHT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_2), 2)
+			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_2), DECIMAL_PLACES)
 
 		else:
 			raise Exception('Not a valid action')
+
 	def move(self, x, y, ang):
 		self._pos[0], self._pos[1], self.__theta = x, y, ang
 		
@@ -265,14 +314,28 @@ class RewardFunction:
 
 	def __init__(self, environment):
 		self.__environment = environment
-		self.__max_angle_variation = round(abs(atan2(1, -1)),2)
-		self.__den = 2 * self.__max_angle_variation
-		self.__inv_den = 1.0 / self.__den
-		self.__k = 0.5
+
+		# Define type of reward function
 		if isinstance(self.__environment, ObstacleEnvironment):
 			self.reward = self.collision_avoidance
 		else:
 			self.reward = self.collision_free
+
+		# Parameters
+		## Goal reaching
+		### Next angle version
+		self.__max_rew_gr, self.__min_rew_gr = 0.5, -0.5
+		self.__amplitude_rew_gr = self.__max_rew_gr - self.__min_rew_gr
+		self.__max_angle, self.__min_angle = PI, 0
+		self.__slope_rew_gr = self.__amplitude_rew_gr / (self.__min_angle - self.__max_angle)
+		self.__intercept_rew_gr = self.__max_rew_gr
+		### Angle variation version
+		self.__max_angle_variation = round(abs(atan2(1, -1)), DECIMAL_PLACES)
+		self.__den = 2 * self.__max_angle_variation
+		self.__inv_den = 1.0 / self.__den
+		## Obstacle avoidance
+		self.__k = 0.5
+
 	def __call__(self, cur_state, action, next_state, event = None):
 		print('[RewardFunction] processing...')
 		if cur_state is not None and next_state is not None:
@@ -322,6 +385,7 @@ class RewardFunction:
 			return self.UNDEFINED
 
 	def goal_reaching(self, cur_state, next_state):
+		#return self.__slope_rew_gr * abs(next_state) + self.__intercept_rew_gr
 		return self.normalize(-self.__max_angle_variation, 
 				self.__max_angle_variation, 
 				abs(cur_state) - abs(next_state)
@@ -389,7 +453,17 @@ class Environment(ABC):
 	@abstractmethod
 	def reset(self, event = None):
 		pass
-		
+
+	def _define_resolution_parameters(self):
+		global MIN_FLOAT_TOLERANCE, MAX_FLOAT_TOLERANCE, DECIMAL_PLACES
+		MIN_FLOAT_TOLERANCE = round(min([j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])]), DECIMAL_PLACES)
+		MAX_FLOAT_TOLERANCE = round(max([j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])]), DECIMAL_PLACES)
+		print('diffs:', self._state_space.raw_repr)
+		print('here:',[j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])])
+		print('MIN_FLOAT_TOLERANCE:', MIN_FLOAT_TOLERANCE)
+		print('MAX_FLOAT_TOLERANCE:', MAX_FLOAT_TOLERANCE)
+		#exit()
+
 	def _build_arena(self):
 		self._arena = np.zeros((self._w, self._h), dtype = np.int8)
 
@@ -427,8 +501,9 @@ class Environment(ABC):
 
 class EmptyEnvironment(Environment):
 	def __init__(self, w, h, action_type = 'simple'):
-		self._cur_state, self._next_state = StateSimple(), StateSimple() # Initializing states
 		super().__init__(w, h, action_type) # Initializing arena, reward, state space, action space and entities
+		self._cur_state, self._next_state = StateSimple(self._state_space), StateSimple(self._state_space) # Initializing states
+		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 		self.reset() # Reseting arena
 
 	def reset(self):
@@ -448,20 +523,11 @@ class EmptyEnvironment(Environment):
 
 		x, y, ang = self._agent.kinematics(action) # Predict next pose
 
-		if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
-			return self.skip()
-
 		# Choose action
 		if action == Actions.FWD:
+			if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
+				return self.skip()
 			neighbour = self._arena[y,x] # Get neighbour of next pose
-			
-			if neighbour == Entities.GOAL.value: # If neighbour is the goal, finish episode
-				self.reset()
-				return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
-
-			self._agent.move(x, y, ang) # Move to predicted pose
-
-			self._next_state(self.make_state())	# Observe next state
 	
 		else: # action == ROT_LEFT or ROT_RIGHT
 			if x < 0 or x == self._w or y < 0 or y == self._h: # If next pose is out of bounds, neighbour is None
@@ -469,64 +535,50 @@ class EmptyEnvironment(Environment):
 			else:
 				neighbour = self._arena[y,x]
 			
-			if neighbour == Entities.GOAL.value: # If got goal, quit
-				self.reset()
-				return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
+		if neighbour == Entities.GOAL.value: # If got goal, quit
+			return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
 
-			self._agent.move(x, y, ang) # Move to predicted pose
+		self._agent.move(x, y, ang) # Move to predicted pose
 
-			self._next_state(self.make_state()) 			# Observe after acting
+		self._next_state(self.make_state()) # Observe after acting
+
+		print(f'[step] next_state: {self._next_state}')
 
 		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
 		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def step_complex(self, action):
-		# Clean old agent info
-		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value
-		
-		# Save last state
-		self._cur_state(self.make_state())
-		
-		# Predict next pose
-		x, y, ang = self._agent.kinematics(action)
+		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value # Clean old agent info in the arena
+
+		x, y, ang = self._agent.kinematics(action) # Predict next pose
+		print(f'[step] cur x,y,ang:{self._agent.x, self._agent.y, self._agent.theta}')
+		print(f'[step] next x,y,ang:{x,y,ang}')
+		print(f'[step] goal x,y:{self._goal.x, self._goal.y}')
 
 		# Choose action
-		if action == Actions.FWD:
-			# If next pose is out of bounds, return and skip to next decision
-			if x < 0 or x == self._w or y < 0 or y == self._h:
-				return self.skip(self._cur_state)
-
-			# Get neighbour of next pose
-			neighbour = self._arena[y,x]
-
-			# Move to predicted pose
-			self._agent.move(x, y, ang)
-
-			# make_state next state
-			self._next_state(self.make_state())
-
-			# If neighbour is the goal, finish episode
-			if neighbour == Entities.GOAL.value:
-				return self._next_state, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
-		# action == ROT_LEFT or ROT_RIGHT
-		else:
-			# If next pose is out of bounds, neighbour is None
-			if x < 0 or x == self._w or y < 0 or y == self._h:
+		if action == ActionsComplex.FWD or action == ActionsComplex.FWD_LEFT or action == ActionsComplex.FWD_RIGHT:
+			if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
+				return self.skip()
+			neighbour = self._arena[y,x] # Get neighbour of next pose
+	
+		else: # action == ROT_LEFT or ROT_RIGHT
+			if x < 0 or x == self._w or y < 0 or y == self._h: # If next pose is out of bounds, neighbour is None
 				neighbour = None
 			else:
 				neighbour = self._arena[y,x]
+			
+		if neighbour == Entities.GOAL.value: # If got goal, quit
+			return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
 
-			# Move to predicted pose
-			self._agent.move(x, y, ang)
+		self._agent.move(x, y, ang) # Move to predicted pose
 
-			# make_state next state
-			#next_state(self.make_state())
+		self._next_state(self.make_state()) # Observe after acting
+
+		print(f'[step] next_state: {self._next_state}')
 
 		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
-		# make_state next state
-		self._next_state(self.make_state())
 		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def make_state(self):
@@ -563,6 +615,7 @@ class ObstacleEnvironment(Environment):
 		self.__los_state_space = DiscreteLineOfSightSpace(1,self.__los_type)
 		self._state_space.concat(self.__los_state_space)
 		print(f'>> State space of len {len(self)} was created: {self}')
+		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 
 		# Auxiliar variables
 		self.__translation_walls = np.array([1,1]).reshape(2,1)

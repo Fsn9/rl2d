@@ -4,6 +4,8 @@ from numpy import linspace, pi
 from random import random, choice
 from environment import *
 from collections import deque
+import datetime, time
+import os
 
 class StateAction:
 	def __init__(self, state, action, initial_alpha, gamma):
@@ -220,6 +222,8 @@ class QLearner:
 
 		# 6. Update current state
 		obs.get_data_from(next_obs)
+		if terminal:
+			self.__environment.reset()
 		print(f'[act] Quitting. terminal: {terminal}\n')
 		return terminal
 
@@ -258,17 +262,49 @@ class QLearner:
 		sa.update_q(reward, max_q, terminal)
 		print(f'[learn] sa {sa} updated')
 
-	def print_result(self):
+	def export_results(self):
+		# Paths
+		parent_path = os.path.join(os.getcwd(), "runs")
+		time_string = datetime.datetime.fromtimestamp(time.time()).strftime("%Y_%m_%d_%H_%M_%S")
+		folder_name = "run-" + time_string
+		folder_path = os.path.join(parent_path, folder_name)
+
+		# Folder
+		os.mkdir(folder_path)
+
+		# Files
+		qtable_file = open(os.path.join(folder_path, "table-" + time_string + ".txt"), "w")
+		qtable_file.write(str(self.__qtable))
+
 		visited_sa_pairs = 0
 		for sa in self.__qtable.table:
 			if sa.visited:
 				visited_sa_pairs += 1
-		print('Visited sa pairs: ', visited_sa_pairs, '/', len(self.__qtable.table))
-		print('Visited percentage (%): ', 100 * visited_sa_pairs / len(self.__qtable.table))
-		print('Moving average reward: ', self.__mov_avg_reward)
-		print('Moving average steps: ', self.__mov_avg_steps)
-		f = open("table.txt","w")
-		f.write(str(self.__qtable))
+		metrics_str = 'Visited sa pairs: ' + str(visited_sa_pairs) + ' / ' + str(len(self.__qtable.table)) + '\n'
+		metrics_str += 'Visited percentage (%): ' + str(100 * visited_sa_pairs / len(self.__qtable.table)) + '\n'
+		metrics_str += 'Moving average reward: ' + str(self.__mov_avg_reward) + '\n'
+		metrics_str += 'Moving average steps: ' + str(self.__mov_avg_steps)
+		metrics_file = open(os.path.join(folder_path, "metrics-" + time_string + ".txt"), "w")
+		metrics_file.write(metrics_str)
+		print('Final results:\n', metrics_str)
+
+		env_data_str = "width: " + str(self.__environment.w) + '\n'
+		env_data_str += "height: " + str(self.__environment.h) + '\n'
+		env_data_str += "state space size: " + str(len(self.__environment.state_space)) + '\n'
+		env_data_str += "state space raw representation: " + str(self.__environment.state_space.space) + '\n'
+		env_data_str += "action space: " + str(self.__action_space)
+		env_data_file = open(os.path.join(folder_path, "env_data-" + time_string + ".txt"), "w")
+		env_data_file.write(env_data_str)
+
+		hyperparameters_str = "learning rate: " + str(self.__alpha) + '\n'
+		hyperparameters_str += "discount factor: " + str(self.__gamma) + '\n'
+		hyperparameters_str += "episodes: " + str(self.__episodes) + '\n'
+		hyperparameters_str += "initial epsilon: " + str(self.__initial_epsilon) + '\n'
+		hyperparameters_str += "final epsilon: " + str(self.__final_epsilon)
+		qlearning_hp_file = open(os.path.join(folder_path, "hyperparameters-" + time_string + ".txt"), "w")
+		qlearning_hp_file.write(hyperparameters_str)
+
+		return folder_path, time_string
 
 	def get_stats(self):
 		return self.__mov_avg_steps, \
