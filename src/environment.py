@@ -12,19 +12,14 @@ PI_4 = round(pi * 0.25, DECIMAL_PLACES)
 TWO_PI = round(2 * pi, DECIMAL_PLACES)
 
 class StateSimple:
-	def __init__(self, space, azimuth = 0.0):
+	def __init__(self, azimuth = 0.0):
 		self._azimuth = azimuth
-		self._space = space
 
 	def __call__(self, obs):
 		return self._process(obs)
 
 	def __eq__(self, other):
 		return self._azimuth == other.azimuth
-
-	@property
-	def space(self):
-		return self._space
 
 	def __repr__(self):
 		return 'Ss (' + str(self._azimuth) + ')'
@@ -47,24 +42,15 @@ class StateSimple:
 		self._azimuth = round(atan2(round(sin_rot * gx_ag - cos_rot * gy_ag), round(cos_rot * gx_ag + sin_rot * gy_ag)), DECIMAL_PLACES)
 		## other approach
 		#self._azimuth = round(atan2(round(sin_rot * gx_ag + cos_rot * gy_ag), round(cos_rot * gx_ag - sin_rot * gy_ag)), DECIMAL_PLACES)
-		print('\taz_y:',round(sin_rot * gx_ag - cos_rot * gy_ag))
-		print('\taz_x:',round(cos_rot * gx_ag + sin_rot * gy_ag))
-		print('\taz_y_raw:', sin_rot * gx_ag - cos_rot * gy_ag)
-		print('\taz_x_raw:', cos_rot * gx_ag + sin_rot * gy_ag)
-		print('\ta_x:', obs[0])
-		print('\ta_y:',obs[1])
-		print('\ta_th:',obs[2])
-		print('\tg_x:',obs[3])
-		print('\tg_y:',obs[4])
+
 		# because the state space does not have -PI and PI is the same as -PI
 		if self._azimuth == -PI: self._azimuth = PI
 		return self
 
 class StateComplex(StateSimple):
-	def __init__(self, space, azimuth = 0.0, los = ()):
+	def __init__(self, azimuth = 0.0, los = ()):
 		super().__init__(azimuth)
 		self.__los = los
-		self.__space = space
 
 	def __repr__(self):
 		return "Sc (" + str(self._azimuth) + "," + str(self.__los) + ")"
@@ -73,20 +59,15 @@ class StateComplex(StateSimple):
 		return self._azimuth == other.azimuth and self.__los == other.los
 
 	@property
-	def space(self):
-		return self.__space
-
-	@property
 	def los(self):
 		return self.__los
 
-	def get_data_from(self):
+	def get_data_from(self, other):
 		self._azimuth, self.__los = other.azimuth, other.los
 
 	def _process(self, obs):
 		super()._process(obs)
 		self.__los = tuple(obs[5])
-		print('los: ', self.__los, obs[5])
 		return self
 
 class ActionsComplex(Enum):
@@ -122,7 +103,7 @@ class DiscreteSpace:
 		space_aux = []
 		for elem1 in self._space:
 			for elem2 in other.space:
-				space_aux.append(StateComplex(self._space, elem1.azimuth, elem2))
+				space_aux.append(StateComplex(elem1.azimuth, elem2))
 		self._space = space_aux
 
 class DiscreteAngularSpace(DiscreteSpace):
@@ -145,7 +126,7 @@ class DiscreteAngularSpace(DiscreteSpace):
 		space_aux.sort()
 		
 		for elem in space_aux: 
-			self._space.append(StateSimple(self._space, elem))
+			self._space.append(StateSimple(elem))
 	@property
 	def raw_repr(self):
 		sr = []
@@ -175,12 +156,19 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 		self.__vectors = []
 		self.__generate_space()
 	def __generate_space(self):
+		# Generating all the possible line of sight states
+		## Without AGENT and VOID entities
 		los_entities = list(filter(lambda ent: (ent != Entities.AGENT.value and ent != Entities.VOID.value), 
 			list(map(lambda x: (x.value), Entities))))
+
 		if self.__shape == '+':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 4 * self.__range)]
 		elif self.__shape == '-':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 3 * self.__range)]
+			## Some filtering
+			### Filter cases with more than 1 goal. It is only possible to detect one goal in the neighborhood
+			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
+			## Vectors depending on the los shape
 			self.__vectors = np.array([[1,1,1],[1,0,-1]])
 		elif self.__shape == '.':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 1 * self.__range)]
@@ -334,7 +322,7 @@ class RewardFunction:
 		self.__den = 2 * self.__max_angle_variation
 		self.__inv_den = 1.0 / self.__den
 		## Obstacle avoidance
-		self.__k = 0.5
+		self.__k = 0.6
 
 	def __call__(self, cur_state, action, next_state, event = None):
 		print('[RewardFunction] processing...')
@@ -364,7 +352,7 @@ class RewardFunction:
 
 	def collision_avoidance(self, cur_state, action, next_state, event = None):
 		# 1. Goal reached
-		if next_state.azimuth == 0 or event == Entities.GOAL.value and Entities.OBSTACLE.value != next_state.los:
+		if next_state.azimuth == 0 or event == Entities.GOAL.value:# and not Entities.OBSTACLE.value in next_state.los:
 			print('reward: GOAL')
 			return self.GOAL_PRIZE
 		# 2. Obstacle collision
@@ -373,7 +361,7 @@ class RewardFunction:
 			return self.COLLISION_PENALTY
 		# 3. If normal navigation
 		elif event is None:
-			if Entities.OBSTACLE.value == next_state.los or Entities.OBSTACLE.value == cur_state.los:
+			if Entities.OBSTACLE.value in next_state.los or Entities.OBSTACLE.value in cur_state.los:
 				print('reward: obstacle avoidance')
 				return self.__k * self.obstacle_avoidance(cur_state.los, next_state.los) \
 				+ (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
@@ -390,8 +378,8 @@ class RewardFunction:
 				self.__max_angle_variation, 
 				abs(cur_state) - abs(next_state)
 				)
-	def obstacle_avoidance(self, cur_state, next_state):
-		return next_state - cur_state
+	def obstacle_avoidance(self, cur_los, next_los):
+		return (np.array(next_los) - np.array(cur_los)).sum()
 
 	# normalize between [-1, 1]
 	def normalize(self, min, max, val):
@@ -462,7 +450,6 @@ class Environment(ABC):
 		print('here:',[j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])])
 		print('MIN_FLOAT_TOLERANCE:', MIN_FLOAT_TOLERANCE)
 		print('MAX_FLOAT_TOLERANCE:', MAX_FLOAT_TOLERANCE)
-		#exit()
 
 	def _build_arena(self):
 		self._arena = np.zeros((self._w, self._h), dtype = np.int8)
@@ -502,7 +489,7 @@ class Environment(ABC):
 class EmptyEnvironment(Environment):
 	def __init__(self, w, h, action_type = 'simple'):
 		super().__init__(w, h, action_type) # Initializing arena, reward, state space, action space and entities
-		self._cur_state, self._next_state = StateSimple(self._state_space), StateSimple(self._state_space) # Initializing states
+		self._cur_state, self._next_state = StateSimple(), StateSimple() # Initializing states
 		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 		self.reset() # Reseting arena
 
@@ -523,7 +510,7 @@ class EmptyEnvironment(Environment):
 
 		x, y, ang = self._agent.kinematics(action) # Predict next pose
 
-		# Choose action
+		# Act
 		if action == Actions.FWD:
 			if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
 				return self.skip()
@@ -541,8 +528,6 @@ class EmptyEnvironment(Environment):
 		self._agent.move(x, y, ang) # Move to predicted pose
 
 		self._next_state(self.make_state()) # Observe after acting
-
-		print(f'[step] next_state: {self._next_state}')
 
 		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
@@ -594,6 +579,7 @@ class EmptyEnvironment(Environment):
 class ObstacleEnvironment(Environment):
 	def __init__(self, w, h, num_obstacles, action_type = 'complex', los_type = '-'):
 		#self.__agent_state = StateComplex()
+		super().__init__(w,h,action_type)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()
 		self.__los_type = los_type
 		if num_obstacles >= w * h:
@@ -604,8 +590,6 @@ class ObstacleEnvironment(Environment):
 			raise ValueError('Invalid number of obstacles')
 		self.__obstacles = []
 
-		super().__init__(w,h,action_type)
-
 		# Add obstacles
 		for i in range(self.__num_obstacles):
 			self.__obstacles.append(EnvEntity())
@@ -614,7 +598,6 @@ class ObstacleEnvironment(Environment):
 		# State space
 		self.__los_state_space = DiscreteLineOfSightSpace(1,self.__los_type)
 		self._state_space.concat(self.__los_state_space)
-		print(f'>> State space of len {len(self)} was created: {self}')
 		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 
 		# Auxiliar variables
@@ -632,6 +615,7 @@ class ObstacleEnvironment(Environment):
 		self._place_entity_random(Entities.AGENT)
 		self._place_entity_random(Entities.GOAL)
 		self.__generate_obstacles(self.__num_obstacles)
+		self._cur_state(self.make_state()) # Define initial state
 
 	def _build_arena(self):
 		self._arena = np.zeros((self._w + 2, self._h + 2), dtype = np.int8)
@@ -665,87 +649,59 @@ class ObstacleEnvironment(Environment):
 		# Clean old agent info
 		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
 
-		# Save last state
-		self._cur_state(self.make_state())
-		
 		# Predict next pose
 		x, y, ang = self._agent.kinematics(action)
+		print(f'[step] cur x,y,ang:{self._agent.x, self._agent.y, self._agent.theta}')
+		print(f'[step] next x,y,ang:{x,y,ang}')
+		print(f'[step] goal x,y:{self._goal.x, self._goal.y}')
 
 		# Check entity for next position
 		neighbour = self._arena[y + 1, x + 1]
 
 		# Act
 		if action == Actions.FWD:			
-			# If collision, quit
 			if neighbour == Entities.OBSTACLE.value:
-				return self.reset(True, self._cur_state, self._cur_state, action, neighbour)
-			# If got goal, quit
+				return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
 			if neighbour == Entities.GOAL.value:
-				return self.reset(True, self._cur_state, self._cur_state, action, neighbour)
+				return neighbour, True, RewardFunction.GOAL_PRIZE, neighbour
 
-			# Move
-			self._agent.move(x, y, ang)
+		self._agent.move(x, y, ang) # Move to predicted pose
 
-			# Observe next state
-			self._next_state(self.make_state())
+		self._next_state(self.make_state()) # Observe after acting
 
-		# action == ROT_LEFT or ROT_RIGHT
-		else:
-			# If got goal, quit
-			if neighbour == Entities.GOAL.value:
-				return self.reset(True, self._cur_state, self._cur_state, action, neighbour)
-			# Move
-			self._agent.move(x, y, ang)
+		print(f'[step] next_state: {self._next_state}')
 
-			# Observe next state
-			self._next_state(self.make_state())
-
-		# Place agent in arena in new position
-		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value
+		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
 
 		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def step_complex(self, action):
 		# Clean old agent info
 		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
-
-		# Save last state
-		self._cur_state(self.make_state())
 		
 		# Predict next pose
 		x, y, ang = self._agent.kinematics(action)
+		print(f'[step] cur x,y,ang:{self._agent.x, self._agent.y, self._agent.theta}')
+		print(f'[step] next x,y,ang:{x,y,ang}')
+		print(f'[step] goal x,y:{self._goal.x, self._goal.y}')
 
 		# Check entity for next position
 		neighbour = self._arena[y + 1, x + 1]
 
 		# Act
-		if action == ActionsComplex.FWD or ActionsComplex.FWD_LEFT or ActionsComplex.FWD_RIGHT:			
-			# If collision, quit
+		if action == ActionsComplex.FWD or ActionsComplex.FWD_LEFT or ActionsComplex.FWD_RIGHT:
 			if neighbour == Entities.OBSTACLE.value:
-				return self.reset(True, self._cur_state, self._cur_state, action, neighbour)
-			# If got goal, quit
+				return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
 			if neighbour == Entities.GOAL.value:
-				return self.reset(True, self._cur_state, self._cur_state, action, neighbour)
+				return neighbour, True, RewardFunction.GOAL_PRIZE, neighbour
 
-			# Move
-			self._agent.move(x, y, ang)
+		self._agent.move(x, y, ang) # Move to predicted pose
 
-			# Observe next state
-			self._next_state(self.make_state())
+		self._next_state(self.make_state()) # Observe after acting
 
-		# action == ROT_LEFT or ROT_RIGHT
-		else:
-			# If got goal, quit
-			if neighbour == Entities.GOAL.value:
-				return self.reset(True, self._cur_state, self._cur_state, action, neighbour)
-			# Move
-			self._agent.move(x, y, ang)
+		print(f'[step] next_state: {self._next_state}')
 
-			# Observe next state
-			self._next_state(self.make_state())
-
-		# Place agent in arena in new position
-		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value
+		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
 
 		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 

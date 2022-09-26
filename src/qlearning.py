@@ -59,6 +59,11 @@ class QTable:
 					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
 		else:
 			for state in self.__state_space():
+				# Remove states where los has goal and does not correspond to 0,45 or 45 in azimuth
+				if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.785 or \
+				state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
+				state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
+					continue
 				for action in ActionsComplex:
 					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
 
@@ -220,10 +225,12 @@ class QLearner:
 		# 5. Learn
 		self.learn(obs, next_obs, action, reward, terminal, neighbour)
 
-		# 6. Update current state
-		obs.get_data_from(next_obs)
 		if terminal:
 			self.__environment.reset()
+			return
+
+		# 6. Update current state
+		obs.get_data_from(next_obs)
 		print(f'[act] Quitting. terminal: {terminal}\n')
 		return terminal
 
@@ -256,11 +263,12 @@ class QLearner:
 			print(f'>> Episodes left: {self.__episodes_left}')
 			if self.__episodes_passed == self.__episodes:
 				self.__finished = True
-
-		max_q = self.__qtable.get_q(next_state, self.__qtable.get_greedy_action(next_state))
+			max_q = RewardFunction.UNDEFINED
+		else:
+			max_q = self.__qtable.get_q(next_state, self.__qtable.get_greedy_action(next_state))
 		sa = self.__qtable.get_sa(cur_state, action)
-		sa.update_q(reward, max_q, terminal)
 		print(f'[learn] sa {sa} updated')
+		sa.update_q(reward, max_q, terminal)
 
 	def export_results(self):
 		# Paths
@@ -286,7 +294,7 @@ class QLearner:
 		metrics_str += 'Moving average steps: ' + str(self.__mov_avg_steps)
 		metrics_file = open(os.path.join(folder_path, "metrics-" + time_string + ".txt"), "w")
 		metrics_file.write(metrics_str)
-		print('Final results:\n', metrics_str)
+		print('Final results:\n', metrics_str, sep = '')
 
 		env_data_str = "width: " + str(self.__environment.w) + '\n'
 		env_data_str += "height: " + str(self.__environment.h) + '\n'
