@@ -577,7 +577,7 @@ class EmptyEnvironment(Environment):
 		)
 
 class ObstacleEnvironment(Environment):
-	def __init__(self, w, h, num_obstacles, action_type = 'complex', los_type = '-'):
+	def __init__(self, w, h, action_type = 'complex', num_obstacles = 2, los_type = '-'):
 		#self.__agent_state = StateComplex()
 		super().__init__(w,h,action_type)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()

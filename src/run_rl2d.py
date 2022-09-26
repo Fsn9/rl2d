@@ -2,39 +2,41 @@ from qlearning import *
 from environment import *
 from graphics import GUI
 import sys
+import argparse
 
-# Read args
-if len(sys.argv) == 1:
-	env_type, env_dim, action_type, episodes = 'empty', 5, 'simple', 4000
-elif len(sys.argv) == 2:
-	env_type, env_dim, action_type, episodes = sys.argv[1], 5, 'simple', 4000
-elif len(sys.argv) == 3:
-	env_type, env_dim, action_type, episodes = sys.argv[1], int(sys.argv[2]), 'simple', 4000
-elif len(sys.argv) == 4:
-	env_type, env_dim, action_type, episodes = sys.argv[1], int(sys.argv[2]), sys.argv[3], 4000
-elif len(sys.argv) == 5:
-	env_type, env_dim, action_type, episodes = sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+# Initialize args parser
+parser = argparse.ArgumentParser(description="rl2d obstacle avoidance simulation", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-if env_dim < 3 or env_dim > 9:
+## Environment and action space args
+parser.add_argument('--env_type', type=str, default='empty', help='The type of the environment. Can be empty or obstacle')
+parser.add_argument('--env_dim', type=int, default=5, help='The environment dimension. It needs to be > 2 and < 10')
+parser.add_argument('--action_type', type=str, default='simple', help='The type of the action space. Can be simple or complex')
+parser.add_argument('--num_obstacles', type=int, default=2, help='The number of obstacles in the environment')
+
+## Qlearning args
+parser.add_argument('--learning_rate', type=float, default=0.1, help='The learning rate >= 0 and <= 1')
+parser.add_argument('--discount_factor', type=float, default=0.99, \
+	help='The discount factor >= and <= 1. For a value of 1 we have a long-term view agent. For a value of 0 we have a myopic agent.')
+parser.add_argument('--episodes', type=int, default=2000, help='The number of learning episodes')
+parser.add_argument('--initial_epsilon', type=float, default=1, \
+	help='The initial epsilon is the exploration probability in the beggining of the learning process.\
+	A value of 1 means a total random agent. A value of 0 is a total greedy agent.')
+parser.add_argument('--final_epsilon', type=float, default=0.05, help='The value of the final exploration probability.')
+args = parser.parse_args()
+config = vars(args)
+
+# Handle environment dimension
+if config['env_dim'] < 3 or config['env_dim'] > 9:
 	raise ValueError("The dimension of the environment needs to be between 2 < x < 10")
 
-num_obstacles = 2
-los_type = '-'
-
-# Empty environment
-if env_type == 'empty':
-	env = EmptyEnvironment(env_dim, env_dim, action_type)
+# Create environment
+if config['env_type'] == 'empty':
+	env = EmptyEnvironment(config['env_dim'], config['env_dim'], config['action_type'])
 else:
-	env = ObstacleEnvironment(env_dim, env_dim, num_obstacles, action_type, los_type)
-
-# Hyperparameters
-learning_rate = 0.1
-discount_factor = 0.99
-initial_epsilon = 1
-final_epsilon = 0.05
+	env = ObstacleEnvironment(config['env_dim'], config['env_dim'], config['action_type'], config['num_obstacles'], '-')
 
 # Agent
-agent = QLearner(learning_rate, discount_factor, episodes, initial_epsilon, final_epsilon, env)
+agent = QLearner(config['learning_rate'], config['discount_factor'], config['episodes'], config['initial_epsilon'], config['final_epsilon'], env)
 
 # Graphics
 gui = GUI(agent, env)
