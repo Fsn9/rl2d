@@ -10,7 +10,6 @@ parser = argparse.ArgumentParser(description="rl2d obstacle avoidance simulation
 ## Environment and action space args
 parser.add_argument('--env_type', type=str, default='empty', help='The type of the environment. Can be empty or obstacle')
 parser.add_argument('--env_dim', type=int, default=5, help='The environment dimension. It needs to be > 2 and < 10')
-parser.add_argument('--action_type', type=str, default='simple', help='The type of the action space. Can be simple or complex')
 parser.add_argument('--num_obstacles', type=int, default=2, help='The number of obstacles in the environment')
 
 ## Qlearning args
@@ -31,9 +30,9 @@ if config['env_dim'] < 3 or config['env_dim'] > 9:
 
 # Create environment
 if config['env_type'] == 'empty':
-	env = EmptyEnvironment(config['env_dim'], config['env_dim'], config['action_type'])
+	env = EmptyEnvironment(config['env_dim'], config['env_dim'])
 else:
-	env = ObstacleEnvironment(config['env_dim'], config['env_dim'], config['action_type'], config['num_obstacles'], '-')
+	env = ObstacleEnvironment(config['env_dim'], config['env_dim'], config['num_obstacles'], '-')
 
 # Agent
 agent = QLearner(config['learning_rate'], config['discount_factor'], config['episodes'], config['initial_epsilon'], config['final_epsilon'], env)

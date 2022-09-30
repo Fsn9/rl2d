@@ -208,18 +208,29 @@ class GUI(tk.Tk):
         if self.__learner.finished:
             print('Learning is finished!')
             folder_path, time_string = self.__learner.export_results()
+
             plt.title('Reward')
             plt.plot([x for x in range(len(self.__learner.mov_avgs_reward))], self.__learner.mov_avgs_reward)
             plt.xlabel("Episodes")
             plt.ylabel("Value")
             plt.savefig(os.path.join(folder_path, 'reward-' + time_string + '.png'), bbox_inches='tight')
             plt.show()
+
             plt.title('Steps')
             plt.plot([x for x in range(len(self.__learner.mov_avgs_steps))], self.__learner.mov_avgs_steps)
             plt.xlabel("Episodes")
             plt.ylabel("Value")
             plt.savefig(os.path.join(folder_path, 'steps-' + time_string + '.png'), bbox_inches='tight')
             plt.show()
+
+            if isinstance(self.__environment, ObstacleEnvironment):
+                plt.title('Episode ending cause (1 : goal, 0 : collision)')
+                plt.plot([x for x in range(len(self.__learner.ending_causes))], self.__learner.ending_causes)
+                plt.xlabel("Episodes")
+                plt.ylabel("Ending cause")
+                plt.savefig(os.path.join(folder_path, 'ending_causes-' + time_string + '.png'), bbox_inches='tight')
+                plt.show()
+
             exit()
         else:
             terminal = self.__learner.act()

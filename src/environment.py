@@ -78,9 +78,9 @@ class ActionsComplex(Enum):
 	ROT_RIGHT = PI_2
 
 class Actions(Enum):
-	ROT_LEFT = -1
-	FWD = 0
-	ROT_RIGHT = 1
+	ROT_LEFT = -0.5
+	FWD = 1
+	ROT_RIGHT = 0.5
 
 class DiscreteSpace:
 	def __init__(self):
@@ -230,15 +230,9 @@ class EnvEntity:
 		self._pos[0], self._pos[1] = x, y
 
 class EnvAgent(EnvEntity):
-	def __init__(self, action_type):
+	def __init__(self):
 		super().__init__()
 		self.__theta = 0
-		if action_type == 'complex':
-			self.kinematics = self.kinematics_complex
-			self.__action_type = action_type
-		else:
-			self.kinematics = self.kinematics_simple
-			self.__action_type = action_type
 
 	@staticmethod
 	def normalize_angle(ang):
@@ -247,44 +241,15 @@ class EnvAgent(EnvEntity):
 			ang -= TWO_PI
 		return ang
 
-	def kinematics_simple(self, action):
+	def kinematics(self, action):
 		if action == Actions.FWD:
-			#x, y = self._pos[0] + cos(self.__theta), self._pos[1] + sin(self.__theta)
-			#if x < 0 or y < 0:
-			#	print('\n\t\t\t SKIP x,y:', x,y)
-			#	return self._pos[0], self._pos[1], self.__theta
 			return int(round(self._pos[0] + cos(self.__theta))), \
 			int(round(self._pos[1] + sin(self.__theta))), \
 			self.__theta
 		elif action == Actions.ROT_LEFT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_2), DECIMAL_PLACES)
+			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_4), DECIMAL_PLACES)
 		elif action == Actions.ROT_RIGHT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_2), DECIMAL_PLACES)
-		else:
-			raise Exception('Not a valid action')
-
-	def kinematics_complex(self, action):
-		if action == ActionsComplex.FWD:
-			return int(round(self._pos[0] + cos(self.__theta))), \
-			int(round(self._pos[1] + sin(self.__theta))), \
-			self.__theta
-
-		elif action == ActionsComplex.FWD_LEFT:
-			return int(round(self._pos[0] + cos(self.__theta + ActionsComplex.FWD_LEFT.value))), \
-			int(round(self._pos[1] + sin(self.__theta + ActionsComplex.FWD_LEFT.value))), \
-			round(self.normalize_angle(self.__theta + ActionsComplex.FWD_LEFT.value), DECIMAL_PLACES)
-
-		elif action == ActionsComplex.FWD_RIGHT:
-			return int(round(self._pos[0] + cos(self.__theta + ActionsComplex.FWD_RIGHT.value))), \
-			int(round(self._pos[1] + sin(self.__theta + ActionsComplex.FWD_RIGHT.value))), \
-			round(self.normalize_angle(self.__theta + ActionsComplex.FWD_RIGHT.value), DECIMAL_PLACES)
-
-		elif action == ActionsComplex.ROT_LEFT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_2), DECIMAL_PLACES)
-
-		elif action == ActionsComplex.ROT_RIGHT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_2), DECIMAL_PLACES)
-
+			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_4), DECIMAL_PLACES)
 		else:
 			raise Exception('Not a valid action')
 
@@ -308,6 +273,7 @@ class RewardFunction:
 			self.reward = self.collision_avoidance
 		else:
 			self.reward = self.collision_free
+		self.reward = self.collision_avoidance2
 
 		# Parameters
 		## Goal reaching
@@ -318,14 +284,14 @@ class RewardFunction:
 		self.__slope_rew_gr = self.__amplitude_rew_gr / (self.__min_angle - self.__max_angle)
 		self.__intercept_rew_gr = self.__max_rew_gr
 		### Angle variation version
-		self.__max_angle_variation = round(abs(atan2(1, -1)), DECIMAL_PLACES)
+		#self.__max_angle_variation = round(abs(atan2(1, -1)), DECIMAL_PLACES)
+		self.__max_angle_variation = PI_4
 		self.__den = 2 * self.__max_angle_variation
 		self.__inv_den = 1.0 / self.__den
 		## Obstacle avoidance
-		self.__k = 0.6
+		self.__k = 0.8
 
 	def __call__(self, cur_state, action, next_state, event = None):
-		print('[RewardFunction] processing...')
 		if cur_state is not None and next_state is not None:
 			print('[RewardFunction] returning real value')
 			return self.reward(cur_state, action, next_state, event)
@@ -333,14 +299,35 @@ class RewardFunction:
 			print('[RewardFunction] returning UNDEFINED')
 			return self.UNDEFINED
 
+	def collision_avoidance2(self, cur_state, action, next_state, event = None):
+		if event == Entities.OBSTACLE.value:
+			print('[RewardFunction] COLLIDED:',self.COLLISION_PENALTY)
+			return self.COLLISION_PENALTY
+		elif event == Entities.VOID.value:
+			print('[RewardFunction] UNDEFINED:', self.UNDEFINED)
+			return self.UNDEFINED
+		else:
+			print('[RewardFunction] goal reaching')
+			if abs(cur_state.azimuth) <= PI_4:
+				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action) + 1.0 * self.forward_incentive(action)
+			else:
+				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
+
+	def forward_incentive(self, action):
+		if action == Actions.FWD:
+			print('\tIncentivizing')
+			return self.GOAL_PRIZE
+		else:
+			return 0
+
 	def collision_free(self, cur_state, action, next_state, event = None):
-		if (next_state.azimuth == 0.0 or event == Entities.GOAL.value):
+		if next_state.azimuth == 0:# or event == Entities.GOAL.value:
 			print('reward: GOAL')
 			return self.GOAL_PRIZE
 
 		elif event is None:
 			print('reward: goal reaching')
-			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
 
 		elif event == Entities.OBSTACLE.value:
 			print('reward: COLLIDED')
@@ -352,7 +339,7 @@ class RewardFunction:
 
 	def collision_avoidance(self, cur_state, action, next_state, event = None):
 		# 1. Goal reached
-		if next_state.azimuth == 0 or event == Entities.GOAL.value:# and not Entities.OBSTACLE.value in next_state.los:
+		if next_state.azimuth == 0:# or event == Entities.GOAL.value:# and not Entities.OBSTACLE.value in next_state.los:
 			print('reward: GOAL')
 			return self.GOAL_PRIZE
 		# 2. Obstacle collision
@@ -361,18 +348,20 @@ class RewardFunction:
 			return self.COLLISION_PENALTY
 		# 3. If normal navigation
 		elif event is None:
+			print('reward: goal reaching')
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
 			if Entities.OBSTACLE.value in next_state.los or Entities.OBSTACLE.value in cur_state.los:
 				print('reward: obstacle avoidance')
 				return self.__k * self.obstacle_avoidance(cur_state.los, next_state.los) \
 				+ (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 			else:
 				print('reward: goal reaching')
-				return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
+				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
 		else:
 			print('reward: undefined')
 			return self.UNDEFINED
 
-	def goal_reaching(self, cur_state, next_state):
+	def goal_reaching(self, cur_state, next_state, action):
 		#return self.__slope_rew_gr * abs(next_state) + self.__intercept_rew_gr
 		return self.normalize(-self.__max_angle_variation, 
 				self.__max_angle_variation, 
@@ -382,17 +371,18 @@ class RewardFunction:
 		return (np.array(next_los) - np.array(cur_los)).sum()
 
 	# normalize between [-1, 1]
+	# normalize between [-0.5, 0.5]
 	def normalize(self, min, max, val):
-		return 2 * (val - min)  * self.__inv_den - 1
+		#return 2 * (val - min)  * self.__inv_den - 1
+		return (val - min)  * self.__inv_den - 0.5
 
 class Environment(ABC):
-	def __init__(self, w, h, action_type):
+	def __init__(self, w, h):
 		self._w, self._h = w, h
-		self._action_type = action_type
 		self._build_arena()
 
 		# Entities
-		self._agent, self._goal = EnvAgent(action_type), EnvEntity()
+		self._agent, self._goal = EnvAgent(), EnvEntity()
 		self._entities = {
 			Entities.AGENT: self._agent,
 			Entities.GOAL: self._goal,
@@ -403,9 +393,6 @@ class Environment(ABC):
 
 		# Reward function
 		self._reward_function = RewardFunction(self)
-
-		# Functions
-		self.step = self.step_simple if self._action_type == 'simple' else self.step_complex
 
 	def __repr__(self):
 		return str(self._arena)
@@ -433,10 +420,6 @@ class Environment(ABC):
 	@property
 	def entities(self):
 		return self._entities
-
-	@property
-	def action_type(self):
-		return self._action_type
 
 	@abstractmethod
 	def reset(self, event = None):
@@ -473,22 +456,19 @@ class Environment(ABC):
 	def skip(self, last_state):
 		return last_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
 
-	# A physics iteration in the environment with simple actions
+	# A physics iteration in the environment
 	@abstractmethod
-	def step_simple(self, action):
+	def step(self, action):
 		pass
-	# A physics iteration in the environment with complex actions
-	@abstractmethod
-	def step_complex(self, action):
-		pass
+
 	# Processing agent state
 	@abstractmethod
 	def make_state(self):
 		pass
 
 class EmptyEnvironment(Environment):
-	def __init__(self, w, h, action_type = 'simple'):
-		super().__init__(w, h, action_type) # Initializing arena, reward, state space, action space and entities
+	def __init__(self, w, h):
+		super().__init__(w, h) # Initializing arena, reward, state space, action space and entities
 		self._cur_state, self._next_state = StateSimple(), StateSimple() # Initializing states
 		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 		self.reset() # Reseting arena
@@ -505,7 +485,7 @@ class EmptyEnvironment(Environment):
 		print('>>> Skipping')
 		return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
 
-	def step_simple(self, action):
+	def step(self, action):
 		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value # Clean old agent info in the arena
 
 		x, y, ang = self._agent.kinematics(action) # Predict next pose
@@ -533,39 +513,6 @@ class EmptyEnvironment(Environment):
 
 		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
-	def step_complex(self, action):
-		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value # Clean old agent info in the arena
-
-		x, y, ang = self._agent.kinematics(action) # Predict next pose
-		print(f'[step] cur x,y,ang:{self._agent.x, self._agent.y, self._agent.theta}')
-		print(f'[step] next x,y,ang:{x,y,ang}')
-		print(f'[step] goal x,y:{self._goal.x, self._goal.y}')
-
-		# Choose action
-		if action == ActionsComplex.FWD or action == ActionsComplex.FWD_LEFT or action == ActionsComplex.FWD_RIGHT:
-			if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
-				return self.skip()
-			neighbour = self._arena[y,x] # Get neighbour of next pose
-	
-		else: # action == ROT_LEFT or ROT_RIGHT
-			if x < 0 or x == self._w or y < 0 or y == self._h: # If next pose is out of bounds, neighbour is None
-				neighbour = None
-			else:
-				neighbour = self._arena[y,x]
-			
-		if neighbour == Entities.GOAL.value: # If got goal, quit
-			return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
-
-		self._agent.move(x, y, ang) # Move to predicted pose
-
-		self._next_state(self.make_state()) # Observe after acting
-
-		print(f'[step] next_state: {self._next_state}')
-
-		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
-
-		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
-
 	def make_state(self):
 		print('make_state (EmptyEnv)')
 		return (	
@@ -577,9 +524,9 @@ class EmptyEnvironment(Environment):
 		)
 
 class ObstacleEnvironment(Environment):
-	def __init__(self, w, h, action_type = 'complex', num_obstacles = 2, los_type = '-'):
+	def __init__(self, w, h, num_obstacles = 2, los_type = '-'):
 		#self.__agent_state = StateComplex()
-		super().__init__(w,h,action_type)
+		super().__init__(w,h)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()
 		self.__los_type = los_type
 		if num_obstacles >= w * h:
@@ -607,7 +554,7 @@ class ObstacleEnvironment(Environment):
 		self.reset()
 
 		# Functions
-		self.step = self.step_simple if action_type == 'simple' else self.step_complex
+		#self.step = self.step_simple if action_type == 'simple' else self.step_complex
 
 	def reset(self, terminal = False, cur_state = None, next_state = None, action = None, event = None):
 		print('>>>Reseting')
@@ -645,7 +592,7 @@ class ObstacleEnvironment(Environment):
 					self._entities[Entities.OBSTACLE][i].move(c - 1, r - 1)
 					break
 
-	def step_simple(self, action):
+	def step(self, action):
 		# Clean old agent info
 		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
 
@@ -660,36 +607,6 @@ class ObstacleEnvironment(Environment):
 
 		# Act
 		if action == Actions.FWD:			
-			if neighbour == Entities.OBSTACLE.value:
-				return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
-			if neighbour == Entities.GOAL.value:
-				return neighbour, True, RewardFunction.GOAL_PRIZE, neighbour
-
-		self._agent.move(x, y, ang) # Move to predicted pose
-
-		self._next_state(self.make_state()) # Observe after acting
-
-		print(f'[step] next_state: {self._next_state}')
-
-		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
-
-		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
-
-	def step_complex(self, action):
-		# Clean old agent info
-		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
-		
-		# Predict next pose
-		x, y, ang = self._agent.kinematics(action)
-		print(f'[step] cur x,y,ang:{self._agent.x, self._agent.y, self._agent.theta}')
-		print(f'[step] next x,y,ang:{x,y,ang}')
-		print(f'[step] goal x,y:{self._goal.x, self._goal.y}')
-
-		# Check entity for next position
-		neighbour = self._arena[y + 1, x + 1]
-
-		# Act
-		if action == ActionsComplex.FWD or ActionsComplex.FWD_LEFT or ActionsComplex.FWD_RIGHT:
 			if neighbour == Entities.OBSTACLE.value:
 				return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
 			if neighbour == Entities.GOAL.value:
