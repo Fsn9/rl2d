@@ -90,10 +90,13 @@ class GUI(tk.Tk):
         self.label_slider_time = self.create_label("Simulation time:", 6,0)
         self.label_slider_time_slider = tk.Scale(from_ = 1, to = 5000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
         self.label_slider_time_slider.grid(row = 6, column = 1)
+        # Buttons
+        self.label_action_interaction_mode = self.create_label('Interaction mode:', 7, 0)
+        self.button_interaction_mode = self.create_button('Manual', 7, 1, self.__toggle_interaction_mode, tk.NORMAL)
+        self.label_action_mode = self.create_label('Action mode:', 8, 0)
+        self.button_action_mode = self.create_button('Greedy', 8, 1, self.__toggle_action_mode, tk.DISABLED)
         #self.label_collisions_wall = self.create_label('Wall collisions:',6,0)
         #self.label_collisions_wall_val = self.create_label(str(self.__learner.counter_collisions_with_wall),6,1)
-        #self.label_collisions_itself = self.create_label('Self collisions:',7,0)
-        #self.label_collisions_itself_val = self.create_label(str(self.__learner.counter_collisions_with_itself),7,1)
 
         # First drawing
         self.draw = self.draw_simple
@@ -113,11 +116,16 @@ class GUI(tk.Tk):
     def create_label(self,text, row, col):
         label = tk.Label(text = text)
         label.grid(row = row, column = col)
-        return label   
+        return label
 
     def create_canvas(self, width, height, color):
         canvas = tk.Canvas(width = width, height = height, bg = color)
         return canvas
+
+    def create_button(self, text, row, col, callback, state = tk.DISABLED):
+        button = tk.Button(text = text, command = callback, state = state)
+        button.grid(row = row, column = col)
+        return button
 
     def draw_rectangle(self, x, y, color):
         rectangle = self.__canvas.create_rectangle(x * self.__pixel_size, y * self.__pixel_size, (1 + x) * self.__pixel_size,
@@ -175,7 +183,6 @@ class GUI(tk.Tk):
         self.label_epsilon_val.config(text=str(epsilon)[0:self.__str_len_limit])
         self.label_reward_val.config(text=str(reward)[0:self.__str_len_limit])
         self.label_episodes_left_val.config(text=str(episodes)[0:self.__str_len_limit])
-        #self.label_collisions_itself_val.config(text=str(self_collisions)[0:6])
         #self.label_collisions_wall_val.config(text=str(wall_collisions)[0:6])
 
     def draw_simple(self):
@@ -203,6 +210,24 @@ class GUI(tk.Tk):
 
     def __change_sim_time(self, val):
         self.__sim_time.set(val)
+
+    def __toggle_interaction_mode(self):
+        if self.button_interaction_mode['text'] == "Manual":
+            self.button_interaction_mode['text'] = "Auto"
+            self.__learner.user_interaction_mode = "Manual"
+            self.button_action_mode['state'] = tk.NORMAL
+        else:
+            self.button_interaction_mode['text'] = "Manual"
+            self.__learner.user_interaction_mode = "Auto"
+            self.button_action_mode['state'] = tk.DISABLED
+
+    def __toggle_action_mode(self):
+        if self.button_action_mode['text'] == "Greedy":
+            self.button_action_mode['text'] = "Random"
+            self.__learner.action_mode = "Greedy"
+        else:
+            self.button_action_mode['text'] = "Greedy"
+            self.__learner.action_mode = "Random"
 
     def run_rl(self):
         if self.__learner.finished:

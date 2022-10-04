@@ -149,6 +149,10 @@ class QLearner:
 		self.__cur_state = []
 		self.__next_state = []
 
+		## Gui variables
+		self.__user_interaction_mode = "Auto"
+		self.__action_mode = "Random"
+
 	@property
 	def alpha(self):
 		return self.__alpha
@@ -200,6 +204,18 @@ class QLearner:
 	@property
 	def ending_causes(self):
 		return self.__ending_causes
+	@property
+	def user_interaction_mode(self):
+		return self.__user_interaction_mode
+	@user_interaction_mode.setter
+	def user_interaction_mode(self, mode):
+		self.__user_interaction_mode = mode
+	@property
+	def action_mode(self):
+		return self.__action_mode
+	@action_mode.setter
+	def action_mode(self, mode):
+		self.__action_mode = mode
 
 	def act(self):
 		# 1. Observe
@@ -233,12 +249,20 @@ class QLearner:
 
 	def decide(self, state):
 		self.__current_steps_sum += 1
-		if random() > self.__current_epsilon:
-			print('action: GREEDY')
-			return self.__qtable.get_greedy_action(state)
+		if self.__user_interaction_mode == "Auto":
+			if random() > self.__current_epsilon:
+				print('action: GREEDY')
+				return self.__qtable.get_greedy_action(state)
+			else:
+				print('action: RANDOM')
+				return choice(self.__action_space)
 		else:
-			print('action: RANDOM')
-			return choice(self.__action_space)
+			if self.__action_mode == "Greedy":
+				print('action: GREEDY')
+				return self.__qtable.get_greedy_action(state)
+			else:
+				print('action: RANDOM')
+				return choice(self.__action_space)
 
 	def learn(self, cur_state, next_state, action, reward, terminal, neighbour):
 		self.__cur_state, self.__next_state = cur_state, next_state
