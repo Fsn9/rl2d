@@ -18,6 +18,6 @@ The arguments available are:
 
 * `--learning_rate`, **default**=0.1. The learning rate needs to be >= 0 and <= 1.
 * `--discount_factor`, **default**=0.99. The discount factor >= and <= 1. In the extreme, for a value of 1 we have a long-term view agent. For a value of 0 we have a myopic agent.
-* `--episodes`, **default**=4000. The number of learning episodes
+* `--episodes`, **default**=4000. The number of learning episodes.
 * `--initial_epsilon`, **default**=1. The initial epsilon is the exploration probability in the beggining of the learning process. A value of 1 means a total random agent. A value of 0 is a total greedy agent.
 * `--final_epsilon`, **default**=0.05. The value of the final exploration probability.
