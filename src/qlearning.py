@@ -6,6 +6,7 @@ from environment import *
 from collections import deque
 import datetime, time
 import os
+import pickle
 
 class StateAction:
 	def __init__(self, state, action, initial_alpha, gamma):
@@ -143,7 +144,9 @@ class QLearner:
 		self.__mov_avg_steps = 0
 
 		## Episode ending
-		self.__ending_causes = []
+		self.__ending_causes = [] # per epoch
+		self.__window_size_ending_causes_moving_avg = 50 # @TODO: put this in yaml or json
+		self.__window_ending_causes = deque(maxlen = self.__window_size_ending_causes_moving_avg)
 
 		## Auxiliar variables
 		self.__cur_state = []
@@ -201,6 +204,9 @@ class QLearner:
 	@property
 	def episodic_steps_sums(self):
 		return self.__episodic_steps_sums
+	@property
+	def window_size_ending_causes_moving_avg(self):
+		return self.__window_size_ending_causes_moving_avg
 	@property
 	def ending_causes(self):
 		return self.__ending_causes
@@ -280,7 +286,9 @@ class QLearner:
 			self.__mov_avgs_reward.append(self.__mov_avg_reward)
 			self.__mov_avgs_steps.append(self.__mov_avg_steps)
 			self.__current_reward_sum, self.__current_steps_sum = 0, 0
-			self.__ending_causes.append(neighbour)
+			self.__window_ending_causes.appendleft(1) if neighbour == Entities.GOAL.value else self.__window_ending_causes.appendleft(0)
+			if self.__episodes_passed % self.__window_size_ending_causes_moving_avg == 0:
+				self.__ending_causes.append(sum(self.__window_ending_causes) / len(self.__window_ending_causes))
 			print(f'>> Episodes left: {self.__episodes_left}')
 			if self.__episodes_passed == self.__episodes:
 				self.__finished = True
@@ -332,6 +340,9 @@ class QLearner:
 		hyperparameters_str += "final epsilon: " + str(self.__final_epsilon)
 		qlearning_hp_file = open(os.path.join(folder_path, "hyperparameters-" + time_string + ".txt"), "w")
 		qlearning_hp_file.write(hyperparameters_str)
+
+		with open(os.path.join(folder_path, "table-" + time_string + ".pkl"), 'wb') as q_table_object_file:
+			pickle.dump(self.__qtable.table, q_table_object_file)
 
 		return folder_path, time_string
 

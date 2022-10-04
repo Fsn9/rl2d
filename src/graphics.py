@@ -114,7 +114,7 @@ class GUI(tk.Tk):
             self.height) + ' pixels' + '\npixel_size = ' + str(int(self.__pixel_size)) + ' pixels'
 
     def create_label(self,text, row, col):
-        label = tk.Label(text = text)
+        label = tk.Label(text = text, anchor = "w")
         label.grid(row = row, column = col)
         return label
 
@@ -152,7 +152,6 @@ class GUI(tk.Tk):
         agent_pos = self.__environment.entities[Entities.AGENT].pos
         agent_ori = self.__environment.entities[Entities.AGENT].theta
         if self.__env_with_walls:
-            #print('Graphics: drawing agent with walls')
             mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
             self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
             #print('Graphics, agent_pos: ', agent_pos[0] + 1, agent_pos[1] + 1)
@@ -163,7 +162,6 @@ class GUI(tk.Tk):
 
     def draw_goal(self):
         goal_pos = self.__environment.entities[Entities.GOAL].pos
-        #print('Graphics, goal_pos: ', goal_pos)
         if self.__env_with_walls:
             self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
         else:
@@ -249,9 +247,9 @@ class GUI(tk.Tk):
             plt.show()
 
             if isinstance(self.__environment, ObstacleEnvironment):
-                plt.title('Episode ending cause (1 : goal, 0 : collision)')
+                plt.title('Episode ending cause average (1 : goal, 0 : collision)')
                 plt.plot([x for x in range(len(self.__learner.ending_causes))], self.__learner.ending_causes)
-                plt.xlabel("Episodes")
+                plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_ending_causes_moving_avg) + " episodes)")
                 plt.ylabel("Ending cause")
                 plt.savefig(os.path.join(folder_path, 'ending_causes-' + time_string + '.png'), bbox_inches='tight')
                 plt.show()
