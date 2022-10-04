@@ -68,7 +68,7 @@ class QTable:
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:
-			repr_ += str(sa)
+			repr_ += str(sa) + '\n'
 		return repr_
 	def __str__(self):
 		return self.__repr__()
