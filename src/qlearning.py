@@ -48,24 +48,31 @@ class StateAction:
 			self.__q = self.__q + self.__initial_alpha / self.__num_visits * (reward + self.__gamma * max_q - self.__q)
 
 class QTable:
-	def __init__(self, environment, alpha, gamma, state_space):
-		self.__table = []
+	def __init__(self, environment, alpha, gamma, state_space, qtable_path):
 		self.__alpha = alpha
 		self.__gamma = gamma
 		self.__state_space = state_space
 		self.__environment = environment
 
-		for idx, state in enumerate(self.__state_space()):
-			if isinstance(self.__environment, ObstacleEnvironment):
-				# Remove states where los has goal and does not correspond to 0,45 or 45 in azimuth
-				if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.785 or \
-				state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
-				state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
-					continue
-			for action in Actions:
-				self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
+		if qtable_path:
+			path_aux = qtable_path.replace('.','-')
+			splits = path_aux.split('-')
+			date_id = splits[1]
+			with open(os.path.join('runs', 'run-' + date_id, qtable_path), 'rb') as q_table_object_file:
+				self.__table = pickle.load(q_table_object_file)
+		else:
+			self.__table = []
+			for idx, state in enumerate(self.__state_space()):
+				if isinstance(self.__environment, ObstacleEnvironment):
+					# Remove states where los has goal and does not correspond to 0, -45 or 45 in azimuth
+					if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.785 or \
+					state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
+					state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
+						continue
+				for action in Actions:
+					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
 
-		print(f'Q table of len {len(self)} was created: {self}')
+		print(f'>>Q table of length {len(self)} was created.')
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:
@@ -111,7 +118,9 @@ class QLearner:
     episodes,
 	initial_epsilon,
 	final_epsilon,
-	environment
+	environment,
+	qtable_path,
+	evaluation
     ):
 		self.__alpha = learning_rate 
 		self.__gamma = discount_factor
@@ -123,8 +132,10 @@ class QLearner:
 		self.__current_epsilon = self.__initial_epsilon
 		self.__final_epsilon = final_epsilon
 		self.__environment = environment
+		self.__qtable_path = qtable_path
+		self.__evaluation = evaluation
+		self.__qtable = QTable(self.__environment, self.__alpha, self.__gamma, self.__environment.state_space, self.__qtable_path)
 		self.__action_space = list(Actions)
-		self.__qtable = QTable(self.__environment, self.__alpha, self.__gamma, self.__environment.state_space)
 		self.__cur_state, self.__next_state = [], []
 		self.__finished = False
 
@@ -222,6 +233,12 @@ class QLearner:
 	@action_mode.setter
 	def action_mode(self, mode):
 		self.__action_mode = mode
+	@property
+	def qtable_path(self):
+		return self.__qtable_path
+	@property
+	def evaluation(self):
+		return self.__evaluation
 
 	def act(self):
 		# 1. Observe
@@ -238,7 +255,7 @@ class QLearner:
 		if neighbour == Entities.VOID.value:
 			print('[act] neighbour is VOID')
 			return False
-		print('[act] learning -> cur, next, action, reward, terminal, neighbour:', obs, next_obs, action, reward, terminal, neighbour)
+		print('[act] learning -> next, action, reward, terminal, neighbour:', next_obs, action, reward, terminal, neighbour)
 
 		# 5. Learn
 		self.learn(obs, next_obs, action, reward, terminal, neighbour)
@@ -253,8 +270,37 @@ class QLearner:
 		print(f'[act] Quitting. terminal: {terminal}\n')
 		return terminal
 
+	def act_eval(self):
+		# 1. Observe
+		obs = self.__environment.observe()
+
+		# 2. Decide
+		action = self.decide_greedy(obs)
+		print('[act], cur_state, action:', obs, action)
+
+		# 3. Act and observe again
+		next_obs, terminal, reward, neighbour = self.__environment.step(action)
+
+		# 4. If invalid action skip to next step
+		if neighbour == Entities.VOID.value:
+			print('[act] neighbour is VOID')
+			return False
+		print('[act] learning -> next, action, reward, terminal, neighbour:', next_obs, action, reward, terminal, neighbour)
+
+		# If terminated, reset the environment
+		if terminal:
+			return self.__environment.play_next_scenario()
+
+		# 6. Save next observation
+		obs.get_data_from(next_obs)
+		print(f'[act] Quitting. terminal: {terminal}\n')
+		return terminal
+
 	def decide(self, state):
 		self.__current_steps_sum += 1
+		if self.__qtable_path:
+			print('action: GREEDY')
+			return self.__qtable.get_greedy_action(state)
 		if self.__user_interaction_mode == "Auto":
 			if random() > self.__current_epsilon:
 				print('action: GREEDY')
@@ -262,13 +308,16 @@ class QLearner:
 			else:
 				print('action: RANDOM')
 				return choice(self.__action_space)
-		else:
+		elif self.__user_interaction_mode == "Manual":
 			if self.__action_mode == "Greedy":
 				print('action: GREEDY')
 				return self.__qtable.get_greedy_action(state)
 			else:
 				print('action: RANDOM')
 				return choice(self.__action_space)
+	def decide_greedy(self, state):
+		print('action: GREEDY')
+		return self.__qtable.get_greedy_action(state)
 
 	def learn(self, cur_state, next_state, action, reward, terminal, neighbour):
 		self.__cur_state, self.__next_state = cur_state, next_state

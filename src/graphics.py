@@ -77,25 +77,30 @@ class GUI(tk.Tk):
         self.__canvas.grid(row = 0, column = 0, columnspan = 2, sticky = tk.W + tk.E + tk.N + tk.S)
 
         # draw labels
-        self.label_reward = self.create_label('Average reward:',1,0)
-        self.label_reward_val = self.create_label(str(self.__learner.mov_avg_reward),1,1)
-        self.label_steps = self.create_label('Average steps:',2,0)
-        self.label_steps_val = self.create_label(str(self.__learner.mov_avg_steps),2,1)
-        self.label_epsilon = self.create_label('Epsilon:',3,0)
-        self.label_epsilon_val = self.create_label(str(self.__learner.current_epsilon),3,1)
-        self.label_gamma = self.create_label('Gamma:',4,0)
-        self.label_gamma_val = self.create_label(str(self.__learner.current_gamma),4,1)
-        self.label_episodes_left = self.create_label('EpisodesLeft:',5,0)
-        self.label_episodes_left_val = self.create_label(str(self.__learner.episodes_left),5,1)
-        self.label_slider_time = self.create_label("Simulation time:", 6,0)
-        self.label_slider_time_slider = tk.Scale(from_ = 1, to = 5000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
-        self.label_slider_time_slider.grid(row = 6, column = 1)
-        # Buttons
-        self.label_action_interaction_mode = self.create_label('Interaction mode:', 7, 0)
-        self.button_interaction_mode = self.create_button('Manual', 7, 1, self.__toggle_interaction_mode, tk.NORMAL)
-        self.label_action_mode = self.create_label('Action mode:', 8, 0)
-        self.button_action_mode = self.create_button('Greedy', 8, 1, self.__toggle_action_mode, tk.DISABLED)
-        #self.label_collisions_wall = self.create_label('Wall collisions:',6,0)
+        if not self.__learner.evaluation:
+            self.label_reward = self.create_label('Average reward:',1,0)
+            self.label_reward_val = self.create_label(str(self.__learner.mov_avg_reward),1,1)
+            self.label_steps = self.create_label('Average steps:',2,0)
+            self.label_steps_val = self.create_label(str(self.__learner.mov_avg_steps),2,1)
+            self.label_epsilon = self.create_label('Epsilon:',3,0)
+            self.label_epsilon_val = self.create_label(str(self.__learner.current_epsilon),3,1)
+            self.label_gamma = self.create_label('Gamma:',4,0)
+            self.label_gamma_val = self.create_label(str(self.__learner.current_gamma),4,1)
+            self.label_episodes_left = self.create_label('EpisodesLeft:',5,0)
+            self.label_episodes_left_val = self.create_label(str(self.__learner.episodes_left),5,1)
+            self.label_slider_time = self.create_label("Simulation time:", 6,0)
+            self.label_slider_time_slider = tk.Scale(from_ = 1, to = 5000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
+            self.label_slider_time_slider.grid(row = 6, column = 1)
+            # Buttons
+            self.label_action_interaction_mode = self.create_label('Interaction mode:', 7, 0)
+            self.button_interaction_mode = self.create_button('Manual', 7, 1, self.__toggle_interaction_mode, \
+                tk.NORMAL if not self.__learner.qtable_path else tk.DISABLED)
+            self.label_action_mode = self.create_label('Action mode:', 8, 0)
+            self.button_action_mode = self.create_button('Greedy', 8, 1, self.__toggle_action_mode, tk.DISABLED)
+        else:
+            self.label_scene = self.create_label('Scene:',1,0)
+            self.label_scene_name = self.create_label("",1,1)
+            #self.label_collisions_wall = self.create_label('Wall collisions:',6,0)
         #self.label_collisions_wall_val = self.create_label(str(self.__learner.counter_collisions_with_wall),6,1)
 
         # First drawing
@@ -107,7 +112,7 @@ class GUI(tk.Tk):
         self.draw()
 
         # start learning process
-        self.run_rl()
+        self.run_evaluation() if self.__learner.evaluation else self.run_learning()
 
     def __str__(self):
         return '--GUI--' + '\n' + 'width = ' + str(self.width) + ' pixels' + '\nheight = ' + str(
@@ -173,7 +178,7 @@ class GUI(tk.Tk):
         for obstacle in obstacles:
             self.__obstacles_gui.append(self.draw_rectangle(obstacle.pos[0] + 1, obstacle.pos[1] + 1, 'brown'))
 
-    def draw_stats(self):
+    def draw_learning_stats(self):
         # Statistics
         steps, gamma, epsilon, reward, episodes = self.__learner.get_stats()
         self.label_steps_val.config(text=str(steps)[0:self.__str_len_limit])
@@ -183,15 +188,25 @@ class GUI(tk.Tk):
         self.label_episodes_left_val.config(text=str(episodes)[0:self.__str_len_limit])
         #self.label_collisions_wall_val.config(text=str(wall_collisions)[0:6])
 
+    def draw_evaluation_stats(self):
+        self.label_scene_name.config(text=str(self.__environment.cur_scene_name)[0:self.__str_len_limit])
+
     def draw_simple(self):
         self.draw_agent()
         self.draw_goal()
-        self.draw_stats()
+        if not self.__learner.evaluation:
+            self.draw_learning_stats()
+        else:
+            self.draw_evaluation_stats()
 
     def draw_complex(self):
-        self.draw_simple()
+        self.draw_agent()
+        self.draw_goal()
         self.draw_obstacles()
-        self.draw_stats()
+        if not self.__learner.evaluation:
+            self.draw_learning_stats()
+        else:
+            self.draw_evaluation_stats()
 
     def clear(self):
         self.__canvas.delete(self.__agent_gui)
@@ -227,7 +242,7 @@ class GUI(tk.Tk):
             self.button_action_mode['text'] = "Greedy"
             self.__learner.action_mode = "Random"
 
-    def run_rl(self):
+    def run_learning(self):
         if self.__learner.finished:
             print('Learning is finished!')
             folder_path, time_string = self.__learner.export_results()
@@ -260,4 +275,11 @@ class GUI(tk.Tk):
             if terminal:
                 print('episodes: ', self.__learner.episodes_passed)
             self.repaint()
-        self.after(self.__sim_time.get(), self.run_rl)
+        self.after(self.__sim_time.get(), self.run_learning)
+
+    def run_evaluation(self):
+        if self.__learner.act_eval() is None: 
+            print('Evaluation is finished!')
+            exit()
+        self.repaint()
+        self.after(500, self.run_evaluation)

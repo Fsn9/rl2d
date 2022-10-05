@@ -4,6 +4,8 @@ import numpy as np
 from math import atan2, pi, cos, sin, isclose
 from itertools import product
 from abc import ABC, abstractmethod
+import yaml
+import os
 
 DECIMAL_PLACES = 3
 PI = round(pi, DECIMAL_PLACES)
@@ -190,8 +192,8 @@ class Entities(Enum):
 	GOAL = 2
 
 class EnvEntity:
-	def __init__(self):
-		self._pos = [0,0]
+	def __init__(self, x = 0, y = 0):
+		self._pos = [x,y]
 
 	def __repr__(self):
 		return 'Entity with position: ' + str(self._pos) + '\n'
@@ -270,10 +272,9 @@ class RewardFunction:
 
 		# Define type of reward function
 		if isinstance(self.__environment, ObstacleEnvironment):
-			self.reward = self.collision_avoidance
+			self.reward = self.collision_avoidance2
 		else:
 			self.reward = self.collision_free
-		self.reward = self.collision_avoidance2
 
 		# Parameters
 		## Goal reaching
@@ -293,10 +294,22 @@ class RewardFunction:
 
 	def __call__(self, cur_state, action, next_state, event = None):
 		if cur_state is not None and next_state is not None:
-			print('[RewardFunction] returning real value')
 			return self.reward(cur_state, action, next_state, event)
 		else:
 			print('[RewardFunction] returning UNDEFINED')
+			return self.UNDEFINED
+
+	def collision_free(self, cur_state, action, next_state, event = None):
+		if next_state.azimuth == 0 or event == Entities.GOAL.value:
+			print('reward: GOAL')
+			return self.GOAL_PRIZE
+
+		elif event is None:
+			print('reward: goal reaching')
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
+
+		else:
+			print('reward: undefined')
 			return self.UNDEFINED
 
 	def collision_avoidance2(self, cur_state, action, next_state, event = None):
@@ -308,7 +321,7 @@ class RewardFunction:
 			return self.UNDEFINED
 		else:
 			print('[RewardFunction] goal reaching')
-			if abs(cur_state.azimuth) <= PI_4:
+			if abs(cur_state.azimuth) <= PI_4: # ADD: and no obstacles in sight?
 				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action) + 1.0 * self.forward_incentive(action)
 			else:
 				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
@@ -320,49 +333,7 @@ class RewardFunction:
 		else:
 			return 0
 
-	def collision_free(self, cur_state, action, next_state, event = None):
-		if next_state.azimuth == 0:# or event == Entities.GOAL.value:
-			print('reward: GOAL')
-			return self.GOAL_PRIZE
-
-		elif event is None:
-			print('reward: goal reaching')
-			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
-
-		elif event == Entities.OBSTACLE.value:
-			print('reward: COLLIDED')
-			return self.COLLISION_PENALTY
-
-		else:
-			print('reward: undefined')
-			return self.UNDEFINED
-
-	def collision_avoidance(self, cur_state, action, next_state, event = None):
-		# 1. Goal reached
-		if next_state.azimuth == 0:# or event == Entities.GOAL.value:# and not Entities.OBSTACLE.value in next_state.los:
-			print('reward: GOAL')
-			return self.GOAL_PRIZE
-		# 2. Obstacle collision
-		elif event == Entities.OBSTACLE.value:
-			print('reward: COLLIDED')
-			return self.COLLISION_PENALTY
-		# 3. If normal navigation
-		elif event is None:
-			print('reward: goal reaching')
-			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
-			if Entities.OBSTACLE.value in next_state.los or Entities.OBSTACLE.value in cur_state.los:
-				print('reward: obstacle avoidance')
-				return self.__k * self.obstacle_avoidance(cur_state.los, next_state.los) \
-				+ (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
-			else:
-				print('reward: goal reaching')
-				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
-		else:
-			print('reward: undefined')
-			return self.UNDEFINED
-
 	def goal_reaching(self, cur_state, next_state, action):
-		#return self.__slope_rew_gr * abs(next_state) + self.__intercept_rew_gr
 		return self.normalize(-self.__max_angle_variation, 
 				self.__max_angle_variation, 
 				abs(cur_state) - abs(next_state)
@@ -370,15 +341,14 @@ class RewardFunction:
 	def obstacle_avoidance(self, cur_los, next_los):
 		return (np.array(next_los) - np.array(cur_los)).sum()
 
-	# normalize between [-1, 1]
 	# normalize between [-0.5, 0.5]
 	def normalize(self, min, max, val):
-		#return 2 * (val - min)  * self.__inv_den - 1
 		return (val - min)  * self.__inv_den - 0.5
 
 class Environment(ABC):
-	def __init__(self, w, h):
+	def __init__(self, w, h, evaluation):
 		self._w, self._h = w, h
+		self._evaluation = evaluation
 		self._build_arena()
 
 		# Entities
@@ -429,10 +399,6 @@ class Environment(ABC):
 		global MIN_FLOAT_TOLERANCE, MAX_FLOAT_TOLERANCE, DECIMAL_PLACES
 		MIN_FLOAT_TOLERANCE = round(min([j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])]), DECIMAL_PLACES)
 		MAX_FLOAT_TOLERANCE = round(max([j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])]), DECIMAL_PLACES)
-		print('diffs:', self._state_space.raw_repr)
-		print('here:',[j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])])
-		print('MIN_FLOAT_TOLERANCE:', MIN_FLOAT_TOLERANCE)
-		print('MAX_FLOAT_TOLERANCE:', MAX_FLOAT_TOLERANCE)
 
 	def _build_arena(self):
 		self._arena = np.zeros((self._w, self._h), dtype = np.int8)
@@ -467,8 +433,8 @@ class Environment(ABC):
 		pass
 
 class EmptyEnvironment(Environment):
-	def __init__(self, w, h):
-		super().__init__(w, h) # Initializing arena, reward, state space, action space and entities
+	def __init__(self, w, h, evaluation):
+		super().__init__(w, h, evaluation) # Initializing arena, reward, state space, action space and entities
 		self._cur_state, self._next_state = StateSimple(), StateSimple() # Initializing states
 		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 		self.reset() # Reseting arena
@@ -514,7 +480,6 @@ class EmptyEnvironment(Environment):
 		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def make_state(self):
-		print('make_state (EmptyEnv)')
 		return (	
 			self._agent.x, 
 			self._agent.y, 
@@ -524,9 +489,9 @@ class EmptyEnvironment(Environment):
 		)
 
 class ObstacleEnvironment(Environment):
-	def __init__(self, w, h, num_obstacles = 2, los_type = '-'):
+	def __init__(self, w, h, num_obstacles, evaluation, los_type = '-'):
 		#self.__agent_state = StateComplex()
-		super().__init__(w,h)
+		super().__init__(w,h,evaluation)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()
 		self.__los_type = los_type
 		if num_obstacles >= w * h:
@@ -537,11 +502,6 @@ class ObstacleEnvironment(Environment):
 			raise ValueError('Invalid number of obstacles')
 		self.__obstacles = []
 
-		# Add obstacles
-		for i in range(self.__num_obstacles):
-			self.__obstacles.append(EnvEntity())
-		self._entities[Entities.OBSTACLE] = self.__obstacles
-
 		# State space
 		self.__los_state_space = DiscreteLineOfSightSpace(1,self.__los_type)
 		self._state_space.concat(self.__los_state_space)
@@ -550,11 +510,95 @@ class ObstacleEnvironment(Environment):
 		# Auxiliar variables
 		self.__translation_walls = np.array([1,1]).reshape(2,1)
 
-		# Reset
-		self.reset()
+		# Start drawing environment
+		if self._evaluation: 
+			self.__scenarios = []
+			scenario_files = sorted(os.listdir('evaluation_scenarios'))
+			for file in scenario_files:
+				with open(os.path.join('evaluation_scenarios',file), "r") as scenario_file:
+					try:
+						scenario = yaml.safe_load(scenario_file)
+					except yaml.YAMLError as exc:
+						print(exc)
+					xs, ys = scenario['obstacles']['x'], scenario['obstacles']['y']
+					if not any(scenario['agent']):
+						pass
+					else:
+						xa, ya, theta = scenario['agent'][0], scenario['agent'][1], scenario['agent'][2]
+						# @TODO: handle theta
+						if xa >= self._w or xa < 0 or ya >= self._h or ya < 0:
+							raise ValueError(f'Agent position ({xa},{ya}) not valid for scenario {file}. \
+								It needs to be inside the environment dimensions that are ({self._w}x{self._h})')
+					if not any(scenario['goal']):
+						pass
+					else:
+						xg, yg = scenario['goal'][0], scenario['goal'][1]
+						if xg >= self._w or xg < 0 or yg >= self._h or yg < 0:
+							raise ValueError(f'Goal position ({xg},{yg}) not valid for scenario {file}. \
+								It needs to be inside the environment dimensions that are ({self._w}x{self._h})')
+						if any(scenario['agent']):
+							if xa == xg and ya == yg:
+								raise ValueError(f'Goal position ({xg},{yg}) overlaps agent position ({xa},{ya}) \
+									for scenario {file}.')
+					for x, y in zip(xs,ys):
+						if x >= self._w or x < 0 or y >= self._h or y < 0:
+							raise ValueError(f'Obstacle position ({x},{y}) not valid for scenario {file}. \
+							It needs to be inside the environment dimensions that are ({self._w}x{self._h})')
+						if any(scenario['agent']):
+							if x == xa and y == ya:
+								raise ValueError(f'Obstacle position ({x},{y}) overlaps agent position ({xa},{ya}) \
+									for scenario {file}.')
+						if any(scenario['goal']):
+							if x == xg and y == yg:
+								raise ValueError(f'Obstacle position ({x},{y}) overlaps goal position ({xg},{yg}) \
+									for scenario {file}.')
+					scenario['name'] = file
+					self.__scenarios.append(scenario)
+			self.__cur_scenario_idx = 0
+			self.play_next_scenario()
+			self.__evaluation_finished = False
+		else:
+			# Add obstacles
+			for i in range(self.__num_obstacles):
+				self.__obstacles.append(EnvEntity())
+				self._entities[Entities.OBSTACLE] = self.__obstacles
+			self.reset()
 
-		# Functions
-		#self.step = self.step_simple if action_type == 'simple' else self.step_complex
+	@property
+	def scenarios(self):
+		return self.__scenarios
+	@property
+	def evaluation_finished(self):
+		return self.__evaluation_finished
+	@property
+	def cur_scene_name(self):
+		return self.__scenarios[self.__cur_scenario_idx - 1]['name']
+
+	def play_next_scenario(self):
+		if self.__cur_scenario_idx == len(self.__scenarios):
+			return None
+		print(f'>>Playing scenario {self.__scenarios[self.__cur_scenario_idx]["name"]}')
+		self._arena[1:self._h + 1, 1:self._w + 1] = [Entities.EMPTY.value]
+
+		self.__place_obstacles(self.__scenarios[self.__cur_scenario_idx]['obstacles'])
+
+		if any(self.__scenarios[self.__cur_scenario_idx]['agent']):
+			self._arena[self.__scenarios[self.__cur_scenario_idx]['agent'][1] + 1, self.__scenarios[self.__cur_scenario_idx]['agent'][0] + 1] = Entities.AGENT.value
+			self._agent.move(self.__scenarios[self.__cur_scenario_idx]['agent'][0], self.__scenarios[self.__cur_scenario_idx]['agent'][1], self.__scenarios[self.__cur_scenario_idx]['agent'][2])
+		else:
+			self._place_entity_random(Entities.AGENT)
+
+		if any(self.__scenarios[self.__cur_scenario_idx]['goal']):
+			self._arena[self.__scenarios[self.__cur_scenario_idx]['goal'][1] + 1, self.__scenarios[self.__cur_scenario_idx]['goal'][0] + 1] = Entities.GOAL.value
+			self._goal.move(self.__scenarios[self.__cur_scenario_idx]['goal'][0], self.__scenarios[self.__cur_scenario_idx]['goal'][1])
+		else:
+			self._place_entity_random(Entities.GOAL)
+
+		self._cur_state(self.make_state())
+
+		self.__cur_scenario_idx += 1
+
+		return self.__scenarios[self.__cur_scenario_idx - 1]['name']
 
 	def reset(self, terminal = False, cur_state = None, next_state = None, action = None, event = None):
 		print('>>>Reseting')
@@ -592,15 +636,19 @@ class ObstacleEnvironment(Environment):
 					self._entities[Entities.OBSTACLE][i].move(c - 1, r - 1)
 					break
 
+	def __place_obstacles(self, positions):
+		del self.__obstacles[:]
+		for idx,(x,y) in enumerate(zip(positions['x'], positions['y'])):
+			self.__obstacles.append(EnvEntity(x,y))
+			self._arena[y + 1,x + 1] = Entities.OBSTACLE.value
+		self._entities[Entities.OBSTACLE] = self.__obstacles
+
 	def step(self, action):
 		# Clean old agent info
 		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
 
 		# Predict next pose
 		x, y, ang = self._agent.kinematics(action)
-		print(f'[step] cur x,y,ang:{self._agent.x, self._agent.y, self._agent.theta}')
-		print(f'[step] next x,y,ang:{x,y,ang}')
-		print(f'[step] goal x,y:{self._goal.x, self._goal.y}')
 
 		# Check entity for next position
 		neighbour = self._arena[y + 1, x + 1]
@@ -615,8 +663,6 @@ class ObstacleEnvironment(Environment):
 		self._agent.move(x, y, ang) # Move to predicted pose
 
 		self._next_state(self.make_state()) # Observe after acting
-
-		print(f'[step] next_state: {self._next_state}')
 
 		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
 

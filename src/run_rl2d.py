@@ -21,6 +21,9 @@ parser.add_argument('--initial_epsilon', type=float, default=1, \
 	help='The initial epsilon is the exploration probability in the beggining of the learning process.\
 	A value of 1 means a total random agent. A value of 0 is a total greedy agent.')
 parser.add_argument('--final_epsilon', type=float, default=0.05, help='The value of the final exploration probability.')
+parser.add_argument('--qtable_path', type=str, default="", help='The path of a trained Qtable .pkl file. \
+	The algorithm will then run in evaluation/testing mode. Provide the qtable .pkl file name, e.g.,: --qtable_path table-2022_10_04_18_36_02.pkl')
+parser.add_argument('--evaluation', action='store_true')
 args = parser.parse_args()
 config = vars(args)
 
@@ -30,12 +33,12 @@ if config['env_dim'] < 3 or config['env_dim'] > 9:
 
 # Create environment
 if config['env_type'] == 'empty':
-	env = EmptyEnvironment(config['env_dim'], config['env_dim'])
+	env = EmptyEnvironment(config['env_dim'], config['env_dim'], config['evaluation'])
 else:
-	env = ObstacleEnvironment(config['env_dim'], config['env_dim'], config['num_obstacles'], '-')
+	env = ObstacleEnvironment(config['env_dim'], config['env_dim'], config['num_obstacles'], config['evaluation'])
 
 # Agent
-agent = QLearner(config['learning_rate'], config['discount_factor'], config['episodes'], config['initial_epsilon'], config['final_epsilon'], env)
+agent = QLearner(config['learning_rate'], config['discount_factor'], config['episodes'], config['initial_epsilon'], config['final_epsilon'], env, config['qtable_path'], config['evaluation'])
 
 # Graphics
 gui = GUI(agent, env)
