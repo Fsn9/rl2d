@@ -513,9 +513,9 @@ class ObstacleEnvironment(Environment):
 		# Start drawing environment
 		if self._evaluation: 
 			self.__scenarios = []
-			scenario_files = sorted(os.listdir('evaluation_scenarios'))
+			scenario_files = sorted(os.listdir('../evaluation_scenarios'))
 			for file in scenario_files:
-				with open(os.path.join('evaluation_scenarios',file), "r") as scenario_file:
+				with open(os.path.join('../evaluation_scenarios',file), "r") as scenario_file:
 					try:
 						scenario = yaml.safe_load(scenario_file)
 					except yaml.YAMLError as exc:
