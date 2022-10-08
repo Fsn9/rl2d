@@ -271,15 +271,15 @@ class GUI(tk.Tk):
 
             exit()
         else:
+            self.repaint()
             terminal = self.__learner.act()
             if terminal:
                 print('episodes: ', self.__learner.episodes_passed)
-            self.repaint()
         self.after(self.__sim_time.get(), self.run_learning)
 
     def run_evaluation(self):
+        self.repaint()
         if self.__learner.act_eval() is None: 
             print('Evaluation is finished!')
             exit()
-        self.repaint()
         self.after(500, self.run_evaluation)

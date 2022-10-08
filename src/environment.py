@@ -1,7 +1,7 @@
 from random import randint, choice
 from enum import Enum
 import numpy as np
-from math import atan2, pi, cos, sin, isclose
+from math import atan2, pi, cos, sin, isclose, sqrt
 from itertools import product
 from abc import ABC, abstractmethod
 import yaml
@@ -12,6 +12,8 @@ PI = round(pi, DECIMAL_PLACES)
 PI_2 = round(pi * 0.5, DECIMAL_PLACES)
 PI_4 = round(pi * 0.25, DECIMAL_PLACES)
 TWO_PI = round(2 * pi, DECIMAL_PLACES)
+axis_angles = [-PI, -PI_2, 0.0, PI_2, PI]
+TOLERANCE_ANGLE_EQUALITY = 0.1
 
 class StateSimple:
 	def __init__(self, azimuth = 0.0):
@@ -163,8 +165,11 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 		los_entities = list(filter(lambda ent: (ent != Entities.AGENT.value and ent != Entities.VOID.value), 
 			list(map(lambda x: (x.value), Entities))))
 
-		if self.__shape == '+':
-			self._space = [los for los in product([ent for ent in los_entities], repeat = 4 * self.__range)]
+		if self.__shape == '|':
+			self._space = [los for los in product([ent for ent in los_entities], repeat = 2 * self.__range)]
+			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
+			self.__vectors = np.array([[1,2],[0,0]])
+			self.__vectors_diag = np.array([[1 + sqrt(2) * 0.5, 2 + sqrt(2) * 0.5],[0,0]])
 		elif self.__shape == '-':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 3 * self.__range)]
 			## Some filtering
@@ -180,6 +185,9 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 	@property
 	def vectors(self):
 		return self.__vectors
+	@property
+	def vectors_diag(self):
+		return self.__vectors_diag
 	@property
 	def shape(self):
 		return self.__shape
@@ -489,7 +497,7 @@ class EmptyEnvironment(Environment):
 		)
 
 class ObstacleEnvironment(Environment):
-	def __init__(self, w, h, num_obstacles, evaluation, los_type = '-'):
+	def __init__(self, w, h, num_obstacles, evaluation, los_type = '|'):
 		#self.__agent_state = StateComplex()
 		super().__init__(w,h,evaluation)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()
@@ -573,6 +581,9 @@ class ObstacleEnvironment(Environment):
 	@property
 	def cur_scene_name(self):
 		return self.__scenarios[self.__cur_scenario_idx - 1]['name']
+	@property
+	def los_type(self):
+		return self.__los_type
 
 	def play_next_scenario(self):
 		if self.__cur_scenario_idx == len(self.__scenarios):
@@ -676,7 +687,11 @@ class ObstacleEnvironment(Environment):
 			[sin(self._agent.theta), -cos(self._agent.theta)]
 		])
 		translation_agent = np.array([self._agent.x, self._agent.y]).reshape(2,1)
-		los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors) + translation_agent + self.__translation_walls).astype(np.int8)
+		if sum(np.isclose(self._agent.theta, axis_angles, atol = TOLERANCE_ANGLE_EQUALITY)) == 1:
+			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors) + translation_agent + self.__translation_walls).astype(np.int8)
+		else:
+			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors_diag) + translation_agent + self.__translation_walls).astype(np.int8)
+		np.clip(los_positions, 0, self._w + 1, out = los_positions)
 		los = []
 		for i in range(los_positions.shape[1]):
 			los.append(self._arena[los_positions[1,i]][los_positions[0,i]])

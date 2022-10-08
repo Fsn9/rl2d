@@ -65,10 +65,15 @@ class QTable:
 			for idx, state in enumerate(self.__state_space()):
 				if isinstance(self.__environment, ObstacleEnvironment):
 					# Remove states where los has goal and does not correspond to 0, -45 or 45 in azimuth
-					if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.785 or \
-					state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
-					state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
-						continue
+					if self.__environment.los_type == '|':
+						if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.0 or \
+						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0:
+							continue
+					elif self.__environment.los_type == '-':
+						if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.785 or \
+						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
+						state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
+							continue
 				for action in Actions:
 					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
 
