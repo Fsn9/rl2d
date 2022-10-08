@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(description="rl2d obstacle avoidance simulation
 ## Environment and action space args
 parser.add_argument('--env_type', type=str, default='empty', help='The type of the environment. Can be empty or obstacle')
 parser.add_argument('--env_dim', type=int, default=5, help='The environment dimension. It needs to be > 2 and < 10')
-parser.add_argument('--num_obstacles', type=int, default=2, help='The number of obstacles in the environment')
+parser.add_argument('--num_obstacles', type=int, default=3, help='The number of obstacles in the environment')
 
 ## Qlearning args
 parser.add_argument('--learning_rate', type=float, default=0.1, help='The learning rate >= 0 and <= 1')
