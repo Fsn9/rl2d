@@ -282,4 +282,4 @@ class GUI(tk.Tk):
         if self.__learner.act_eval() is None: 
             print('Evaluation is finished!')
             exit()
-        self.after(500, self.run_evaluation)
+        self.after(750, self.run_evaluation)

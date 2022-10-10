@@ -12,6 +12,8 @@ PI = round(pi, DECIMAL_PLACES)
 PI_2 = round(pi * 0.5, DECIMAL_PLACES)
 PI_4 = round(pi * 0.25, DECIMAL_PLACES)
 TWO_PI = round(2 * pi, DECIMAL_PLACES)
+SQRT_2 = round(sqrt(2), DECIMAL_PLACES)
+SQRT_5 = round(sqrt(5), DECIMAL_PLACES)
 axis_angles = [-PI, -PI_2, 0.0, PI_2, PI]
 TOLERANCE_ANGLE_EQUALITY = 0.1
 
@@ -82,9 +84,11 @@ class ActionsComplex(Enum):
 	ROT_RIGHT = PI_2
 
 class Actions(Enum):
-	ROT_LEFT = -0.5
-	FWD = 1
-	ROT_RIGHT = 0.5
+	LEFT_LEFT = -PI_2
+	LEFT = -PI_4
+	STAY = 0
+	RIGHT = PI_4
+	RIGHT_RIGHT = PI_2
 
 class DiscreteSpace:
 	def __init__(self):
@@ -169,7 +173,7 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 2 * self.__range)]
 			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
 			self.__vectors = np.array([[1,2],[0,0]])
-			self.__vectors_diag = np.array([[1 + sqrt(2) * 0.5, 2 + sqrt(2) * 0.5],[0,0]])
+			self.__vectors_diag = np.array([[SQRT_2, SQRT_2],[0,0]])
 		elif self.__shape == '-':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 3 * self.__range)]
 			## Some filtering
@@ -177,9 +181,11 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
 			## Vectors depending on the los shape
 			self.__vectors = np.array([[1,1,1],[1,0,-1]])
-		elif self.__shape == '.':
-			self._space = [los for los in product([ent for ent in los_entities], repeat = 1 * self.__range)]
-			self.__vectors = np.array([[1],[0]])
+		elif self.__shape == 'T':
+			self._space = [los for los in product([ent for ent in los_entities], repeat = 4 * self.__range)]
+			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
+			self.__vectors = np.array([[1,2,2,2],[0,1,0,-1]])
+			self.__vectors_diag = np.array([[SQRT_2, 3 * SQRT_2 * 0.5, 2 * SQRT_2, 3 * SQRT_2 * 0.5],[0, SQRT_2 * 0.5, 0, -SQRT_2 * 0.5]])
 		else: # shape == '*'
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 6 * self.__range)]
 	@property
@@ -252,14 +258,10 @@ class EnvAgent(EnvEntity):
 		return ang
 
 	def kinematics(self, action):
-		if action == Actions.FWD:
-			return int(round(self._pos[0] + cos(self.__theta))), \
+		if action in Actions:
+			return int(round(self._pos[0] + cos(self.__theta + action.value))), \
 			int(round(self._pos[1] + sin(self.__theta))), \
-			self.__theta
-		elif action == Actions.ROT_LEFT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta - PI_4), DECIMAL_PLACES)
-		elif action == Actions.ROT_RIGHT:
-			return int(self._pos[0]), int(self._pos[1]), round(self.normalize_angle(self.__theta + PI_4), DECIMAL_PLACES)
+			self.__theta + action.value
 		else:
 			raise Exception('Not a valid action')
 
@@ -328,11 +330,7 @@ class RewardFunction:
 			print('[RewardFunction] UNDEFINED:', self.UNDEFINED)
 			return self.UNDEFINED
 		else:
-			print('[RewardFunction] goal reaching')
-			if abs(cur_state.azimuth) <= PI_4: # ADD: and no obstacles in sight?
-				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action) + 1.0 * self.forward_incentive(action)
-			else:
-				return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
 
 	def forward_incentive(self, action):
 		if action == Actions.FWD:
@@ -497,8 +495,7 @@ class EmptyEnvironment(Environment):
 		)
 
 class ObstacleEnvironment(Environment):
-	def __init__(self, w, h, num_obstacles, evaluation, los_type = '|'):
-		#self.__agent_state = StateComplex()
+	def __init__(self, w, h, num_obstacles, evaluation, los_type = 'T'):
 		super().__init__(w,h,evaluation)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()
 		self.__los_type = los_type
@@ -664,12 +661,11 @@ class ObstacleEnvironment(Environment):
 		# Check entity for next position
 		neighbour = self._arena[y + 1, x + 1]
 
-		# Act
-		if action == Actions.FWD:			
-			if neighbour == Entities.OBSTACLE.value:
-				return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
-			if neighbour == Entities.GOAL.value:
-				return neighbour, True, RewardFunction.GOAL_PRIZE, neighbour
+		# Act		
+		if neighbour == Entities.OBSTACLE.value:
+			return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
+		if neighbour == Entities.GOAL.value:
+			return neighbour, True, RewardFunction.GOAL_PRIZE, neighbour
 
 		self._agent.move(x, y, ang) # Move to predicted pose
 

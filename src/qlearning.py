@@ -74,6 +74,12 @@ class QTable:
 						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
 						state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
 							continue
+					elif self.__environment.los_type == 'T':
+						if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.0 or \
+						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.464 or \
+						state.los[2] == Entities.GOAL.value and not state.azimuth == 0.0 or \
+						state.los[3] == Entities.GOAL.value and not state.azimuth == -0.464:
+							continue
 				for action in Actions:
 					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
 
