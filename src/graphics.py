@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from math import sin, cos
 from environment import EmptyEnvironment, ObstacleEnvironment, Entities
 import os
+import time
 
 def compute_pixel_size(grid_width, grid_height, big_side):
     if grid_width > grid_height:
@@ -189,7 +190,7 @@ class GUI(tk.Tk):
         #self.label_collisions_wall_val.config(text=str(wall_collisions)[0:6])
 
     def draw_evaluation_stats(self):
-        self.label_scene_name.config(text=str(self.__environment.cur_scene_name)[0:self.__str_len_limit])
+        self.label_scene_name.config(text=str(self.__environment.cur_scene_name)[0:self.__str_len_limit + 1])
 
     def draw_simple(self):
         self.draw_agent()
@@ -278,8 +279,10 @@ class GUI(tk.Tk):
         self.after(self.__sim_time.get(), self.run_learning)
 
     def run_evaluation(self):
-        self.repaint()
         if self.__learner.act_eval() is None: 
             print('Evaluation is finished!')
+            self.repaint()
+            time.sleep(2)
             exit()
+        self.repaint()
         self.after(750, self.run_evaluation)

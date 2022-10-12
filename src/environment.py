@@ -13,6 +13,7 @@ PI_2 = round(pi * 0.5, DECIMAL_PLACES)
 PI_4 = round(pi * 0.25, DECIMAL_PLACES)
 TWO_PI = round(2 * pi, DECIMAL_PLACES)
 SQRT_2 = round(sqrt(2), DECIMAL_PLACES)
+SQRT_2_2 = round(sqrt(2) * 0.5, DECIMAL_PLACES)
 SQRT_5 = round(sqrt(5), DECIMAL_PLACES)
 axis_angles = [-PI, -PI_2, 0.0, PI_2, PI]
 TOLERANCE_ANGLE_EQUALITY = 0.1
@@ -111,10 +112,14 @@ class DiscreteSpace:
 		space_aux = []
 		for elem1 in self._space:
 			for elem2 in other.space:
-				space_aux.append(StateComplex(elem1.azimuth, elem2))
+				if type(self) == DiscreteAngularSpace:
+					space_aux.append(StateComplex(elem1.azimuth, elem2))
+				else:
+					space_aux.append(StateComplex(elem2.azimuth, elem1))
 		self._space = space_aux
 
 class DiscreteAngularSpace(DiscreteSpace):
+	POSSIBLE_ANGLES = [-PI, -3 * PI_4, -PI_2, -PI_4, 0, PI_4, PI_2, 3 * PI_4]
 	def __init__(self, width, height):
 		super().__init__()
 		self.__width, self.__height = width, height
@@ -158,11 +163,16 @@ class DiscreteAngularSpace(DiscreteSpace):
 		return dims_map[dims]
 
 class DiscreteLineOfSightSpace(DiscreteSpace):
-	def __init__(self, range, shape = 'T'):
+	TERMINAL_STATES = [(0,0,0), (0,1,0)]
+	def __init__(self, range_, shape = '-'):
 		super().__init__()
-		self.__range, self.__shape = range, shape
+		self.__range, self.__shape = range_, shape
+		self.__possible_distances = [d for d in range(self.__range + 1)]
+		self.__bins = []
 		self.__vectors = []
+		self.__vectors_diag = []
 		self.__generate_space()
+
 	def __generate_space(self):
 		# Generating all the possible line of sight states
 		## Without AGENT and VOID entities
@@ -174,20 +184,32 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
 			self.__vectors = np.array([[1,2],[0,0]])
 			self.__vectors_diag = np.array([[SQRT_2, SQRT_2],[0,0]])
+
 		elif self.__shape == '-':
-			self._space = [los for los in product([ent for ent in los_entities], repeat = 3 * self.__range)]
+			self.__num_bins = 3
+			self.__relaxing_tolerance = 0.05 # to make PI_4 values be digitized the same in -pi/4 < x < pi/4.
+			self.__bins = [-PI_4 + self.__relaxing_tolerance, PI_4 -  self.__relaxing_tolerance] 
+			self._space = [los for los in product([ent for ent in self.__possible_distances], repeat = self.__num_bins)]
 			## Some filtering
 			### Filter cases with more than 1 goal. It is only possible to detect one goal in the neighborhood
-			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
 			## Vectors depending on the los shape
-			self.__vectors = np.array([[1,1,1],[1,0,-1]])
+			self.__basis_vectors = np.array([[1,1,1],[1,0,-1]])
+			self.__basis_vectors_diag = np.array([[SQRT_2_2, SQRT_2, SQRT_2_2],[SQRT_2_2, 0, -SQRT_2_2]])
+			self.__vectors = np.copy(self.__basis_vectors)
+			self.__vectors_diag = np.copy(self.__basis_vectors_diag)
+			for i in range(self.__range - 1):
+				self.__vectors = np.concatenate((self.__vectors, self.__basis_vectors + np.array([[i+1,i+1,i+1],[0,0,0]])), axis = 1)
+				self.__vectors_diag = np.concatenate((self.__vectors_diag, self.__basis_vectors_diag + np.array([[i+SQRT_2,i+SQRT_2,i+SQRT_2],[0,0,0]])), axis = 1)
+
 		elif self.__shape == 'T':
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 4 * self.__range)]
 			self._space = list(filter(lambda los: (not los.count(2) > 1), self._space))
 			self.__vectors = np.array([[1,2,2,2],[0,1,0,-1]])
 			self.__vectors_diag = np.array([[SQRT_2, 3 * SQRT_2 * 0.5, 2 * SQRT_2, 3 * SQRT_2 * 0.5],[0, SQRT_2 * 0.5, 0, -SQRT_2 * 0.5]])
+
 		else: # shape == '*'
 			self._space = [los for los in product([ent for ent in los_entities], repeat = 6 * self.__range)]
+
 	@property
 	def vectors(self):
 		return self.__vectors
@@ -197,6 +219,18 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 	@property
 	def shape(self):
 		return self.__shape
+	@property
+	def num_bins(self):
+		return self.__num_bins
+	@property
+	def range(self):
+		return self.__range
+	@property
+	def possible_distances(self):
+		return self.__possible_distances
+	@property
+	def bins(self):
+		return self.__bins
 
 class Entities(Enum):
 	VOID = -2
@@ -259,8 +293,8 @@ class EnvAgent(EnvEntity):
 
 	def kinematics(self, action):
 		if action in Actions:
-			return int(round(self._pos[0] + cos(self.__theta + action.value))), \
-			int(round(self._pos[1] + sin(self.__theta))), \
+			return int(round(self._pos[0] + cos(self.__theta + action.value * 0.5))), \
+			int(round(self._pos[1] + sin(self.__theta + action.value * 0.5))), \
 			self.__theta + action.value
 		else:
 			raise Exception('Not a valid action')
@@ -275,6 +309,7 @@ class EnvAgent(EnvEntity):
 class RewardFunction:
 	GOAL_PRIZE = 1
 	COLLISION_PENALTY = -1
+	TERMINAL_STATE = -1
 	UNDEFINED = 0
 
 	def __init__(self, environment):
@@ -296,11 +331,11 @@ class RewardFunction:
 		self.__intercept_rew_gr = self.__max_rew_gr
 		### Angle variation version
 		#self.__max_angle_variation = round(abs(atan2(1, -1)), DECIMAL_PLACES)
-		self.__max_angle_variation = PI_4
+		self.__max_angle_variation = abs(round(atan2(-1, 2), DECIMAL_PLACES))
 		self.__den = 2 * self.__max_angle_variation
 		self.__inv_den = 1.0 / self.__den
 		## Obstacle avoidance
-		self.__k = 0.8
+		self.__k = 0.75
 
 	def __call__(self, cur_state, action, next_state, event = None):
 		if cur_state is not None and next_state is not None:
@@ -316,21 +351,29 @@ class RewardFunction:
 
 		elif event is None:
 			print('reward: goal reaching')
-			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 
 		else:
 			print('reward: undefined')
 			return self.UNDEFINED
 
 	def collision_avoidance2(self, cur_state, action, next_state, event = None):
-		if event == Entities.OBSTACLE.value:
+		if event == Entities.OBSTACLE.value or \
+		next_state.los.count(self.__environment.state_space.possible_distances[0]) == self.__environment.state_space.num_bins:
 			print('[RewardFunction] COLLIDED:',self.COLLISION_PENALTY)
 			return self.COLLISION_PENALTY
+		elif event == Entities.GOAL.value and not any(x < self.__environment.state_space.range for x in cur_state.los):
+			print('[RewardFunction] GOAL')
+			return self.GOAL_PRIZE
 		elif event == Entities.VOID.value:
 			print('[RewardFunction] UNDEFINED:', self.UNDEFINED)
 			return self.UNDEFINED
+		elif any(x < self.__environment.state_space.range for x in cur_state.los):
+			print('[RewardFunction] OBSTACLE AVOIDANCE')
+			return self.__k * self.obstacle_avoidance(cur_state.los, action) + (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 		else:
-			return self.goal_reaching(cur_state.azimuth, next_state.azimuth, action)
+			print('[RewardFunction] GOAL REACHING')
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 
 	def forward_incentive(self, action):
 		if action == Actions.FWD:
@@ -339,13 +382,13 @@ class RewardFunction:
 		else:
 			return 0
 
-	def goal_reaching(self, cur_state, next_state, action):
+	def goal_reaching(self, cur_state, next_state):
 		return self.normalize(-self.__max_angle_variation, 
 				self.__max_angle_variation, 
 				abs(cur_state) - abs(next_state)
 				)
-	def obstacle_avoidance(self, cur_los, next_los):
-		return (np.array(next_los) - np.array(cur_los)).sum()
+	def obstacle_avoidance(self, cur_los, action):
+		return (cur_los[np.digitize(action.value, self.__environment.state_space.bins)] - self.__environment.state_space.range) / self.__environment.state_space.range
 
 	# normalize between [-0.5, 0.5]
 	def normalize(self, min, max, val):
@@ -418,7 +461,7 @@ class Environment(ABC):
 			if self._arena[r,c] == Entities.EMPTY.value:
 				self._arena[r,c] = ent.value
 				if ent == Entities.AGENT:
-					self._agent.move(c, r, 0.0)
+					self._agent.move(c, r, choice(DiscreteAngularSpace.POSSIBLE_ANGLES))
 					break
 				elif ent == Entities.GOAL:
 					self._goal.move(c, r)
@@ -495,7 +538,7 @@ class EmptyEnvironment(Environment):
 		)
 
 class ObstacleEnvironment(Environment):
-	def __init__(self, w, h, num_obstacles, evaluation, los_type = 'T'):
+	def __init__(self, w, h, num_obstacles, evaluation, los_type = '-'):
 		super().__init__(w,h,evaluation)
 		self._cur_state, self._next_state = StateComplex(), StateComplex()
 		self.__los_type = los_type
@@ -508,9 +551,10 @@ class ObstacleEnvironment(Environment):
 		self.__obstacles = []
 
 		# State space
-		self.__los_state_space = DiscreteLineOfSightSpace(1,self.__los_type)
-		self._state_space.concat(self.__los_state_space)
-		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
+		self.__los_state_space = DiscreteLineOfSightSpace(2, self.__los_type)
+		self.__los_state_space.concat(self._state_space)
+		self._state_space = self.__los_state_space
+		#self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 
 		# Auxiliar variables
 		self.__translation_walls = np.array([1,1]).reshape(2,1)
@@ -526,7 +570,7 @@ class ObstacleEnvironment(Environment):
 					except yaml.YAMLError as exc:
 						print(exc)
 					xs, ys = scenario['obstacles']['x'], scenario['obstacles']['y']
-					if not any(scenario['agent']):
+					if not scenario['agent']:
 						pass
 					else:
 						xa, ya, theta = scenario['agent'][0], scenario['agent'][1], scenario['agent'][2]
@@ -534,14 +578,14 @@ class ObstacleEnvironment(Environment):
 						if xa >= self._w or xa < 0 or ya >= self._h or ya < 0:
 							raise ValueError(f'Agent position ({xa},{ya}) not valid for scenario {file}. \
 								It needs to be inside the environment dimensions that are ({self._w}x{self._h})')
-					if not any(scenario['goal']):
+					if not scenario['goal']:
 						pass
 					else:
 						xg, yg = scenario['goal'][0], scenario['goal'][1]
 						if xg >= self._w or xg < 0 or yg >= self._h or yg < 0:
 							raise ValueError(f'Goal position ({xg},{yg}) not valid for scenario {file}. \
 								It needs to be inside the environment dimensions that are ({self._w}x{self._h})')
-						if any(scenario['agent']):
+						if scenario['agent']:
 							if xa == xg and ya == yg:
 								raise ValueError(f'Goal position ({xg},{yg}) overlaps agent position ({xa},{ya}) \
 									for scenario {file}.')
@@ -549,11 +593,11 @@ class ObstacleEnvironment(Environment):
 						if x >= self._w or x < 0 or y >= self._h or y < 0:
 							raise ValueError(f'Obstacle position ({x},{y}) not valid for scenario {file}. \
 							It needs to be inside the environment dimensions that are ({self._w}x{self._h})')
-						if any(scenario['agent']):
+						if scenario['agent']:
 							if x == xa and y == ya:
 								raise ValueError(f'Obstacle position ({x},{y}) overlaps agent position ({xa},{ya}) \
 									for scenario {file}.')
-						if any(scenario['goal']):
+						if scenario['goal']:
 							if x == xg and y == yg:
 								raise ValueError(f'Obstacle position ({x},{y}) overlaps goal position ({xg},{yg}) \
 									for scenario {file}.')
@@ -585,18 +629,18 @@ class ObstacleEnvironment(Environment):
 	def play_next_scenario(self):
 		if self.__cur_scenario_idx == len(self.__scenarios):
 			return None
-		print(f'>>Playing scenario {self.__scenarios[self.__cur_scenario_idx]["name"]}')
+		print(f'\n>>Playing scenario {self.__scenarios[self.__cur_scenario_idx]["name"]}')
 		self._arena[1:self._h + 1, 1:self._w + 1] = [Entities.EMPTY.value]
 
 		self.__place_obstacles(self.__scenarios[self.__cur_scenario_idx]['obstacles'])
 
-		if any(self.__scenarios[self.__cur_scenario_idx]['agent']):
+		if self.__scenarios[self.__cur_scenario_idx]['agent']:
 			self._arena[self.__scenarios[self.__cur_scenario_idx]['agent'][1] + 1, self.__scenarios[self.__cur_scenario_idx]['agent'][0] + 1] = Entities.AGENT.value
 			self._agent.move(self.__scenarios[self.__cur_scenario_idx]['agent'][0], self.__scenarios[self.__cur_scenario_idx]['agent'][1], self.__scenarios[self.__cur_scenario_idx]['agent'][2])
 		else:
 			self._place_entity_random(Entities.AGENT)
 
-		if any(self.__scenarios[self.__cur_scenario_idx]['goal']):
+		if self.__scenarios[self.__cur_scenario_idx]['goal']:
 			self._arena[self.__scenarios[self.__cur_scenario_idx]['goal'][1] + 1, self.__scenarios[self.__cur_scenario_idx]['goal'][0] + 1] = Entities.GOAL.value
 			self._goal.move(self.__scenarios[self.__cur_scenario_idx]['goal'][0], self.__scenarios[self.__cur_scenario_idx]['goal'][1])
 		else:
@@ -615,6 +659,14 @@ class ObstacleEnvironment(Environment):
 		self._place_entity_random(Entities.GOAL)
 		self.__generate_obstacles(self.__num_obstacles)
 		self._cur_state(self.make_state()) # Define initial state
+		if self._cur_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
+			while True:
+				a_loc = np.where(self._arena == Entities.AGENT.value)
+				self._arena[a_loc[0].item()][a_loc[1].item()] = Entities.EMPTY.value
+				self._place_entity_random(Entities.AGENT)
+				self._cur_state(self.make_state())
+				if self._cur_state.los not in DiscreteLineOfSightSpace.TERMINAL_STATES:
+					break
 
 	def _build_arena(self):
 		self._arena = np.zeros((self._w + 2, self._h + 2), dtype = np.int8)
@@ -629,7 +681,7 @@ class ObstacleEnvironment(Environment):
 			if self._arena[r,c] == Entities.EMPTY.value:
 				self._arena[r,c] = ent.value
 				if ent == Entities.AGENT:
-					self._agent.move(c - 1, r - 1, 0.0)
+					self._agent.move(c - 1, r - 1, choice(DiscreteAngularSpace.POSSIBLE_ANGLES))
 					break
 				elif ent == Entities.GOAL:
 					self._goal.move(c - 1, r - 1)
@@ -656,7 +708,9 @@ class ObstacleEnvironment(Environment):
 		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
 
 		# Predict next pose
+		print(f'before pose: {self._agent.x,self._agent.y,self._agent.theta}')
 		x, y, ang = self._agent.kinematics(action)
+		print(f'after pose: {x,y,ang}')
 
 		# Check entity for next position
 		neighbour = self._arena[y + 1, x + 1]
@@ -673,7 +727,10 @@ class ObstacleEnvironment(Environment):
 
 		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
 
-		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
+		if self._next_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
+			return self._next_state, True, RewardFunction.TERMINAL_STATE, neighbour
+		else:
+			return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def __generate_los(self, terminal = False):
 		if terminal:
@@ -689,10 +746,21 @@ class ObstacleEnvironment(Environment):
 			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors_diag) + translation_agent + self.__translation_walls).astype(np.int8)
 		np.clip(los_positions, 0, self._w + 1, out = los_positions)
 		los = []
-		for i in range(los_positions.shape[1]):
-			los.append(self._arena[los_positions[1,i]][los_positions[0,i]])
+		for bin_idx in range(self.__los_state_space.num_bins):
+			bin_to_scan = []
+			for dist_idx in range(self.__los_state_space.range):
+				cell_idx = dist_idx * self.__los_state_space.num_bins + bin_idx
+				bin_to_scan.append(self._arena[los_positions[1, cell_idx]][los_positions[0, cell_idx]])
+			los.append(self.__distance_to_obstacle(bin_to_scan, self.__los_state_space.range))
 		return tuple(los)
-	
+
+	# Returns the index of the first occurence of an obstacle in a line of sight bin, otherwise returns len of the bin
+	## e.g. [-1,0], it returns 0; [0,0], it returns 2
+	@staticmethod
+	def __distance_to_obstacle(los_bin, max_range):
+		try: return los_bin.index(Entities.OBSTACLE.value)
+		except: return max_range
+
 	def make_state(self, terminal = False):
 		return (
 			self._agent.x,

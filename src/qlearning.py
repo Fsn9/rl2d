@@ -69,20 +69,17 @@ class QTable:
 						if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.0 or \
 						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0:
 							continue
-					elif self.__environment.los_type == '-':
-						if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.785 or \
-						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.0 or \
-						state.los[2] == Entities.GOAL.value and not state.azimuth == -0.785:
-							continue
 					elif self.__environment.los_type == 'T':
 						if state.los[0] == Entities.GOAL.value and not state.azimuth == 0.0 or \
 						state.los[1] == Entities.GOAL.value and not state.azimuth == 0.464 or \
 						state.los[2] == Entities.GOAL.value and not state.azimuth == 0.0 or \
 						state.los[3] == Entities.GOAL.value and not state.azimuth == -0.464:
 							continue
+					elif self.__environment.los_type == '-':
+						if state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
+							continue
 				for action in Actions:
 					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
-
 		print(f'>>Q table of length {len(self)} was created.')
 	def __repr__(self):
 		repr_ = ""
@@ -257,7 +254,8 @@ class QLearner:
 
 		# 2. Decide
 		action = self.decide(obs)
-		print('[act], cur_state, action:', obs, action)
+		print(f'[act], cur_state: {obs}')
+		print(f'[act], action: {action}')
 
 		# 3. Act and observe again
 		next_obs, terminal, reward, neighbour = self.__environment.step(action)
@@ -266,7 +264,10 @@ class QLearner:
 		if neighbour == Entities.VOID.value:
 			print('[act] neighbour is VOID')
 			return False
-		print('[act] learning -> next, action, reward, terminal, neighbour:', next_obs, action, reward, terminal, neighbour)
+		print(f'[act] next_state {next_obs}')
+		print(f'[act] reward: {reward}')
+		print(f'[act] terminal: {terminal}')
+		print(f'[act] neighbour: {neighbour}')
 
 		# 5. Learn
 		self.learn(obs, next_obs, action, reward, terminal, neighbour)
@@ -287,7 +288,8 @@ class QLearner:
 
 		# 2. Decide
 		action = self.decide_greedy(obs)
-		print('[act], cur_state, action:', obs, action)
+		print(f'[act], cur_state: {obs}')
+		print(f'[act], action: {action}')
 
 		# 3. Act and observe again
 		next_obs, terminal, reward, neighbour = self.__environment.step(action)
@@ -296,7 +298,10 @@ class QLearner:
 		if neighbour == Entities.VOID.value:
 			print('[act] neighbour is VOID')
 			return False
-		print('[act] learning -> next, action, reward, terminal, neighbour:', next_obs, action, reward, terminal, neighbour)
+		print(f'[act] next_state {next_obs}')
+		print(f'[act] reward: {reward}')
+		print(f'[act] terminal: {terminal}')
+		print(f'[act] neighbour: {neighbour}')
 
 		# If terminated, reset the environment
 		if terminal:
@@ -356,8 +361,8 @@ class QLearner:
 		else:
 			max_q = self.__qtable.get_q(next_state, self.__qtable.get_greedy_action(next_state))
 		sa = self.__qtable.get_sa(cur_state, action)
-		print(f'[learn] {sa}')
 		sa.update_q(reward, max_q, terminal)
+		print(f'[learn] {sa}')
 
 	def export_results(self):
 		# Paths
