@@ -92,12 +92,6 @@ class GUI(tk.Tk):
             self.label_slider_time = self.create_label("Simulation time:", 6,0)
             self.label_slider_time_slider = tk.Scale(from_ = 1, to = 5000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
             self.label_slider_time_slider.grid(row = 6, column = 1)
-            # Buttons
-            self.label_action_interaction_mode = self.create_label('Interaction mode:', 7, 0)
-            self.button_interaction_mode = self.create_button('Manual', 7, 1, self.__toggle_interaction_mode, \
-                tk.NORMAL if not self.__learner.qtable_path else tk.DISABLED)
-            self.label_action_mode = self.create_label('Action mode:', 8, 0)
-            self.button_action_mode = self.create_button('Greedy', 8, 1, self.__toggle_action_mode, tk.DISABLED)
         else:
             self.label_scene = self.create_label('Scene:',1,0)
             self.label_scene_name = self.create_label("",1,1)
@@ -224,24 +218,6 @@ class GUI(tk.Tk):
 
     def __change_sim_time(self, val):
         self.__sim_time.set(val)
-
-    def __toggle_interaction_mode(self):
-        if self.button_interaction_mode['text'] == "Manual":
-            self.button_interaction_mode['text'] = "Auto"
-            self.__learner.user_interaction_mode = "Manual"
-            self.button_action_mode['state'] = tk.NORMAL
-        else:
-            self.button_interaction_mode['text'] = "Manual"
-            self.__learner.user_interaction_mode = "Auto"
-            self.button_action_mode['state'] = tk.DISABLED
-
-    def __toggle_action_mode(self):
-        if self.button_action_mode['text'] == "Greedy":
-            self.button_action_mode['text'] = "Random"
-            self.__learner.action_mode = "Greedy"
-        else:
-            self.button_action_mode['text'] = "Greedy"
-            self.__learner.action_mode = "Random"
 
     def run_learning(self):
         if self.__learner.finished:

@@ -331,11 +331,12 @@ class RewardFunction:
 		self.__intercept_rew_gr = self.__max_rew_gr
 		### Angle variation version
 		#self.__max_angle_variation = round(abs(atan2(1, -1)), DECIMAL_PLACES)
-		self.__max_angle_variation = abs(round(atan2(-1, 2), DECIMAL_PLACES))
+		#self.__max_angle_variation = abs(round(atan2(-1, 2), DECIMAL_PLACES))
+		self.__max_angle_variation = abs(round(PI, DECIMAL_PLACES))
 		self.__den = 2 * self.__max_angle_variation
 		self.__inv_den = 1.0 / self.__den
 		## Obstacle avoidance
-		self.__k = 0.75
+		self.__k = 0.5
 
 	def __call__(self, cur_state, action, next_state, event = None):
 		if cur_state is not None and next_state is not None:
@@ -362,7 +363,7 @@ class RewardFunction:
 		next_state.los.count(self.__environment.state_space.possible_distances[0]) == self.__environment.state_space.num_bins:
 			print('[RewardFunction] COLLIDED:',self.COLLISION_PENALTY)
 			return self.COLLISION_PENALTY
-		elif event == Entities.GOAL.value and not any(x < self.__environment.state_space.range for x in cur_state.los):
+		elif next_state.azimuth == 0.0 and not any(x < self.__environment.state_space.range for x in cur_state.los):
 			print('[RewardFunction] GOAL')
 			return self.GOAL_PRIZE
 		elif event == Entities.VOID.value:
@@ -370,7 +371,7 @@ class RewardFunction:
 			return self.UNDEFINED
 		elif any(x < self.__environment.state_space.range for x in cur_state.los):
 			print('[RewardFunction] OBSTACLE AVOIDANCE')
-			return self.__k * self.obstacle_avoidance(cur_state.los, action) + (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
+			return 1 * self.obstacle_avoidance(cur_state.los, action) + (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 		else:
 			print('[RewardFunction] GOAL REACHING')
 			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
@@ -388,6 +389,9 @@ class RewardFunction:
 				abs(cur_state) - abs(next_state)
 				)
 	def obstacle_avoidance(self, cur_los, action):
+		print(f'action: {action}, {action.value}')
+		print(f'los:',{cur_los})
+		print(f'roa: {(cur_los[np.digitize(action.value, self.__environment.state_space.bins)] - self.__environment.state_space.range) / self.__environment.state_space.range}')
 		return (cur_los[np.digitize(action.value, self.__environment.state_space.bins)] - self.__environment.state_space.range) / self.__environment.state_space.range
 
 	# normalize between [-0.5, 0.5]
@@ -717,9 +721,9 @@ class ObstacleEnvironment(Environment):
 
 		# Act		
 		if neighbour == Entities.OBSTACLE.value:
-			return neighbour, True, RewardFunction.COLLISION_PENALTY, neighbour
+			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
 		if neighbour == Entities.GOAL.value:
-			return neighbour, True, RewardFunction.GOAL_PRIZE, neighbour
+			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
 
 		self._agent.move(x, y, ang) # Move to predicted pose
 
@@ -755,7 +759,7 @@ class ObstacleEnvironment(Environment):
 		return tuple(los)
 
 	# Returns the index of the first occurence of an obstacle in a line of sight bin, otherwise returns len of the bin
-	## e.g. [-1,0], it returns 0; [0,0], it returns 2
+	## e.g. [-1,0], it returns 0; [0,-1] it returns 1; [0,0], it returns 2
 	@staticmethod
 	def __distance_to_obstacle(los_bin, max_range):
 		try: return los_bin.index(Entities.OBSTACLE.value)
