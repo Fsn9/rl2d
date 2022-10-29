@@ -89,8 +89,8 @@ class GUI(tk.Tk):
             self.label_gamma_val = self.create_label(str(self.__learner.current_gamma),4,1)
             self.label_episodes_left = self.create_label('EpisodesLeft:',5,0)
             self.label_episodes_left_val = self.create_label(str(self.__learner.episodes_left),5,1)
-            self.label_slider_time = self.create_label("Simulation time:", 6,0)
-            self.label_slider_time_slider = tk.Scale(from_ = 1, to = 5000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
+            self.label_slider_time = self.create_label("Simulation period (ms):", 6,0)
+            self.label_slider_time_slider = tk.Scale(from_ = 1, to = 10000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
             self.label_slider_time_slider.grid(row = 6, column = 1)
         else:
             self.label_scene = self.create_label('Scene:',1,0)
@@ -168,13 +168,11 @@ class GUI(tk.Tk):
             self.__goal_gui = self.draw_rectangle(goal_pos[0], goal_pos[1], 'red')
 
     def draw_obstacles(self):
-        # Obstacles
         obstacles = self.__environment.entities[Entities.OBSTACLE]
         for obstacle in obstacles:
             self.__obstacles_gui.append(self.draw_rectangle(obstacle.pos[0] + 1, obstacle.pos[1] + 1, 'brown'))
 
     def draw_learning_stats(self):
-        # Statistics
         steps, gamma, epsilon, reward, episodes = self.__learner.get_stats()
         self.label_steps_val.config(text=str(steps)[0:self.__str_len_limit])
         self.label_gamma_val.config(text=str(gamma)[0:self.__str_len_limit])
@@ -225,15 +223,15 @@ class GUI(tk.Tk):
             folder_path, time_string = self.__learner.export_results()
 
             plt.title('Reward')
-            plt.plot([x for x in range(len(self.__learner.mov_avgs_reward))], self.__learner.mov_avgs_reward)
-            plt.xlabel("Episodes")
+            plt.plot([x for x in range(len(self.__learner.steps))], self.__learner.steps)
+            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_reward_moving_avg) + " episodes)")
             plt.ylabel("Value")
             plt.savefig(os.path.join(folder_path, 'reward-' + time_string + '.png'), bbox_inches='tight')
             plt.show()
 
             plt.title('Steps')
-            plt.plot([x for x in range(len(self.__learner.mov_avgs_steps))], self.__learner.mov_avgs_steps)
-            plt.xlabel("Episodes")
+            plt.plot([x for x in range(len(self.__learner.reward_sums))], self.__learner.reward_sums)
+            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_steps_moving_avg) + " episodes)")
             plt.ylabel("Value")
             plt.savefig(os.path.join(folder_path, 'steps-' + time_string + '.png'), bbox_inches='tight')
             plt.show()
@@ -250,8 +248,8 @@ class GUI(tk.Tk):
         else:
             self.repaint()
             terminal = self.__learner.act()
-            if terminal:
-                print('episodes: ', self.__learner.episodes_passed)
+            if terminal[0] or terminal[1] == "skip":
+                self.__environment.reset()
         self.after(self.__sim_time.get(), self.run_learning)
 
     def run_evaluation(self):

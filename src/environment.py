@@ -39,19 +39,10 @@ class StateSimple:
 		self._azimuth = other.azimuth
 
 	def _process(self, obs):
-		## prev
 		gx_ag, gy_ag = obs[3] - obs[0], obs[4] - obs[1]
-		## other approach
-		#gx_ag, gy_ag = obs[3] - obs[0], obs[1] - obs[4]
 		cos_rot, sin_rot = cos(obs[2]), sin(obs[2])
-		# self._azimuth = round(atan2(-sin_rot * gx_ag + cos_rot * gy_ag, cos_rot * gx_ag + sin_rot * gy_ag), DECIMAL_PLACES)
-		## prev
 		self._azimuth = round(atan2(round(sin_rot * gx_ag - cos_rot * gy_ag), round(cos_rot * gx_ag + sin_rot * gy_ag)), DECIMAL_PLACES)
-		## other approach
-		#self._azimuth = round(atan2(round(sin_rot * gx_ag + cos_rot * gy_ag), round(cos_rot * gx_ag - sin_rot * gy_ag)), DECIMAL_PLACES)
-
-		# because the state space does not have -PI and PI is the same as -PI
-		if self._azimuth == -PI: self._azimuth = PI
+		if self._azimuth == -PI: self._azimuth = PI # because the state space does not have -PI and PI is the same as -PI
 		return self
 
 class StateComplex(StateSimple):
@@ -76,13 +67,6 @@ class StateComplex(StateSimple):
 		super()._process(obs)
 		self.__los = tuple(obs[5])
 		return self
-
-class ActionsComplex(Enum):
-	ROT_LEFT = -PI_2
-	FWD_LEFT = -PI_4
-	FWD = 0
-	FWD_RIGHT = PI_4
-	ROT_RIGHT = PI_2
 
 class Actions(Enum):
 	LEFT_LEFT = -PI_2
@@ -124,43 +108,49 @@ class DiscreteAngularSpace(DiscreteSpace):
 		super().__init__()
 		self.__width, self.__height = width, height
 		self.__generate_space()
+		self.__raw_repr = []
+		for state in self._space:
+			self.__raw_repr.append(state.azimuth)
 
 	def __generate_space(self):
-		dims = self.expand_dims((self.__height, self.__width))
 		space_aux = []
-		for y in range(dims[0]):
-			for x in range(dims[1]):
+		for y in range(self.__height):
+			for x in range(self.__width):
 				space_aux.append(round(atan2(y,x), DECIMAL_PLACES))
 				space_aux.append(round(atan2(-y,x), DECIMAL_PLACES))
 				space_aux.append(round(atan2(-y,-x), DECIMAL_PLACES))
 				space_aux.append(round(atan2(y,-x), DECIMAL_PLACES))
+
+		# Cases when one coordinate exceeds env dims
+		max_dim = self.expand_dims((self.__height, self.__width))
+		for x in range(self.__height, max_dim):			
+			space_aux.append(round(atan2(x, 1), DECIMAL_PLACES))
+			space_aux.append(round(atan2(x, -1), DECIMAL_PLACES))
+			space_aux.append(round(atan2(-x, 1), DECIMAL_PLACES))
+			space_aux.append(round(atan2(-x, -1), DECIMAL_PLACES))
+			space_aux.append(round(atan2(1, x), DECIMAL_PLACES))
+			space_aux.append(round(atan2(-1, x), DECIMAL_PLACES))
+			space_aux.append(round(atan2(1, -x), DECIMAL_PLACES))
+			space_aux.append(round(atan2(-1, -x), DECIMAL_PLACES))
 
 		space_aux = list(dict.fromkeys(space_aux))
 		space_aux.sort()
 		
 		for elem in space_aux: 
 			self._space.append(StateSimple(elem))
+		print(self._space)
+		#exit()
+
 	@property
 	def raw_repr(self):
-		sr = []
-		for state in self._space:
-			sr.append(state.azimuth)
-		return sr
+		return self.__raw_repr
 
 	# Depending on the grid resolution one needs to consider augmented state spaces
 	# 9 is the maximum state space dimension
 	@staticmethod
 	def expand_dims(dims):
-		dims_map = {
-			(3,3) : (3,3),
-			(4,4) : (5,5),
-			(5,5) : (6,6),
-			(6,6) : (7,7),
-			(7,7) : (9,9),
-			(8,8) : (10,10),
-			(9,9) : (12,12)
-		}
-		return dims_map[dims]
+		# assuming squared environment
+		return int(SQRT_2 * (dims[0] - 1)) + 1
 
 class DiscreteLineOfSightSpace(DiscreteSpace):
 	TERMINAL_STATES = [(0,0,0), (0,1,0)]
@@ -188,7 +178,8 @@ class DiscreteLineOfSightSpace(DiscreteSpace):
 		elif self.__shape == '-':
 			self.__num_bins = 3
 			self.__relaxing_tolerance = 0.05 # to make PI_4 values be digitized the same in -pi/4 < x < pi/4.
-			self.__bins = [-PI_4 + self.__relaxing_tolerance, PI_4 -  self.__relaxing_tolerance] 
+			#self.__bins = [-PI_4 + self.__relaxing_tolerance, PI_4 -  self.__relaxing_tolerance]
+			self.__bins = [-PI_4 - self.__relaxing_tolerance, PI_4 +  self.__relaxing_tolerance]
 			self._space = [los for los in product([ent for ent in self.__possible_distances], repeat = self.__num_bins)]
 			## Some filtering
 			### Filter cases with more than 1 goal. It is only possible to detect one goal in the neighborhood
@@ -330,8 +321,6 @@ class RewardFunction:
 		self.__slope_rew_gr = self.__amplitude_rew_gr / (self.__min_angle - self.__max_angle)
 		self.__intercept_rew_gr = self.__max_rew_gr
 		### Angle variation version
-		#self.__max_angle_variation = round(abs(atan2(1, -1)), DECIMAL_PLACES)
-		#self.__max_angle_variation = abs(round(atan2(-1, 2), DECIMAL_PLACES))
 		self.__max_angle_variation = abs(round(PI, DECIMAL_PLACES))
 		self.__den = 2 * self.__max_angle_variation
 		self.__inv_den = 1.0 / self.__den
@@ -359,29 +348,49 @@ class RewardFunction:
 			return self.UNDEFINED
 
 	def collision_avoidance2(self, cur_state, action, next_state, event = None):
-		if event == Entities.OBSTACLE.value or \
-		next_state.los.count(self.__environment.state_space.possible_distances[0]) == self.__environment.state_space.num_bins:
+		# 1. If collision or terminal state
+		if event == Entities.OBSTACLE.value or next_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
 			print('[RewardFunction] COLLIDED:',self.COLLISION_PENALTY)
 			return self.COLLISION_PENALTY
-		elif next_state.azimuth == 0.0 and not any(x < self.__environment.state_space.range for x in cur_state.los):
-			print('[RewardFunction] GOAL')
-			return self.GOAL_PRIZE
+		# 2. UNDEFINED cases
 		elif event == Entities.VOID.value:
 			print('[RewardFunction] UNDEFINED:', self.UNDEFINED)
 			return self.UNDEFINED
-		elif any(x < self.__environment.state_space.range for x in cur_state.los):
-			print('[RewardFunction] OBSTACLE AVOIDANCE')
-			return 1 * self.obstacle_avoidance(cur_state.los, action) + (1 - self.__k) * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
+		# 3. Collision avoidance
 		else:
-			print('[RewardFunction] GOAL REACHING')
-			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
-
-	def forward_incentive(self, action):
-		if action == Actions.FWD:
-			print('\tIncentivizing')
-			return self.GOAL_PRIZE
-		else:
-			return 0
+			los_idx = np.digitize(action.value, self.__environment.state_space.bins)
+			dist_margin = min(cur_state.los[los_idx], 2)
+			## If distance margin is safe
+			if dist_margin >= 2:
+				# If goal achieved
+				if next_state.azimuth == 0.0:
+					print('[RewardFunction] GOAL')
+					return self.GOAL_PRIZE
+				# otherwise find the goal
+				else:
+					print('[RewardFunction] GOAL REACHING')
+					return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
+			else:
+				# If goal achieved but distance margin is dangerous
+				if cur_state.azimuth == 0.0:
+					print('[RewardFunction] SPECIAL CASE dist_margin = 1')
+					# Incentivize for strong avoidance
+					if action == Actions.LEFT_LEFT or action == Actions.RIGHT_RIGHT:
+						print('[RewardFunction] SPECIAL CASE critical turn')
+						return 0.0
+					# Otherwise penalize
+					else:
+						print('[RewardFunction] SPECIAL CASE bad action')
+						return -0.5
+				# If goal is not achieved, look for the goal
+				else:
+					print('[RewardFunction] OBSTACLE AVOIDANCE')
+					if action == Actions.LEFT_LEFT or action == Actions.RIGHT_RIGHT:
+						print('[RewardFunction] OBSTACLE AVOIDANCE - avoided')
+						return 0.5 * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
+					else:
+						print('[RewardFunction] OBSTACLE AVOIDANCE - critical')
+						return -0.5 + 0.5 * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 
 	def goal_reaching(self, cur_state, next_state):
 		return self.normalize(-self.__max_angle_variation, 
@@ -448,11 +457,6 @@ class Environment(ABC):
 	def reset(self, event = None):
 		pass
 
-	def _define_resolution_parameters(self):
-		global MIN_FLOAT_TOLERANCE, MAX_FLOAT_TOLERANCE, DECIMAL_PLACES
-		MIN_FLOAT_TOLERANCE = round(min([j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])]), DECIMAL_PLACES)
-		MAX_FLOAT_TOLERANCE = round(max([j - i for i, j in zip(self._state_space.raw_repr[:-1], self._state_space.raw_repr[1:])]), DECIMAL_PLACES)
-
 	def _build_arena(self):
 		self._arena = np.zeros((self._w, self._h), dtype = np.int8)
 
@@ -489,7 +493,6 @@ class EmptyEnvironment(Environment):
 	def __init__(self, w, h, evaluation):
 		super().__init__(w, h, evaluation) # Initializing arena, reward, state space, action space and entities
 		self._cur_state, self._next_state = StateSimple(), StateSimple() # Initializing states
-		self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 		self.reset() # Reseting arena
 
 	def reset(self):
@@ -499,28 +502,16 @@ class EmptyEnvironment(Environment):
 		self._place_entity_random(Entities.GOAL)
 		self._cur_state(self.make_state()) # Define initial state
 
-	# When invalid action, skip to next iteration
-	def skip(self):
-		print('>>> Skipping')
-		return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
-
 	def step(self, action):
 		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value # Clean old agent info in the arena
 
 		x, y, ang = self._agent.kinematics(action) # Predict next pose
 
 		# Act
-		if action == Actions.FWD:
-			if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
-				return self.skip()
-			neighbour = self._arena[y,x] # Get neighbour of next pose
-	
-		else: # action == ROT_LEFT or ROT_RIGHT
-			if x < 0 or x == self._w or y < 0 or y == self._h: # If next pose is out of bounds, neighbour is None
-				neighbour = None
-			else:
-				neighbour = self._arena[y,x]
-			
+		if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
+			return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
+		neighbour = self._arena[y,x] # Get neighbour of next pose
+		
 		if neighbour == Entities.GOAL.value: # If got goal, quit
 			return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
 
@@ -558,7 +549,6 @@ class ObstacleEnvironment(Environment):
 		self.__los_state_space = DiscreteLineOfSightSpace(2, self.__los_type)
 		self.__los_state_space.concat(self._state_space)
 		self._state_space = self.__los_state_space
-		#self._define_resolution_parameters() # Define MIN_FLOAT_TOLERANCE and DECIMAL_PLACES depending on the state space
 
 		# Auxiliar variables
 		self.__translation_walls = np.array([1,1]).reshape(2,1)
@@ -721,8 +711,10 @@ class ObstacleEnvironment(Environment):
 
 		# Act		
 		if neighbour == Entities.OBSTACLE.value:
+			print('event: Collision')
 			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
 		if neighbour == Entities.GOAL.value:
+			print('event: GOAL')
 			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
 
 		self._agent.move(x, y, ang) # Move to predicted pose
@@ -732,8 +724,10 @@ class ObstacleEnvironment(Environment):
 		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
 
 		if self._next_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
-			return self._next_state, True, RewardFunction.TERMINAL_STATE, neighbour
+			print('event: TERMINAL_STATE')
+			return self._next_state, True, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 		else:
+			print('event: normal')
 			return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
 
 	def __generate_los(self, terminal = False):

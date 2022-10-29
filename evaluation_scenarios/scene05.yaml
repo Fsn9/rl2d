@@ -2,4 +2,4 @@ obstacles:
  x: []
  y: []
 agent: [2, 4, -3.14]
-goal: [3, 0]
+goal: [3, 1]

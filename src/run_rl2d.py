@@ -22,8 +22,10 @@ parser.add_argument('--initial_epsilon', type=float, default=1, \
 	A value of 1 means a total random agent. A value of 0 is a total greedy agent.')
 parser.add_argument('--final_epsilon', type=float, default=0.05, help='The value of the final exploration probability.')
 parser.add_argument('--qtable_path', type=str, default="", help='The path of a trained Qtable .pkl file. \
-	The algorithm will then run in evaluation/testing mode. Provide the qtable .pkl file name, e.g.,: --qtable_path table-2022_10_04_18_36_02.pkl')
+	The algorithm will then run in evaluation/testing mode. Provide the qtable .pkl file name (e.g.,: --qtable_path table-2022_10_04_18_36_02.pkl)')
 parser.add_argument('--evaluation', action='store_true')
+
+# Parse args
 args = parser.parse_args()
 config = vars(args)
 
@@ -32,6 +34,10 @@ if config['env_dim'] < 3 or config['env_dim'] > 9:
 	raise ValueError("The dimension of the environment needs to be between 2 < x < 10")
 
 # Create environment
+env_types = ["empty", "obstacle"]
+if config['env_type'] not in env_types:
+	raise ValueError(f"Invalid env type {config['env_type']}. --env_type should be one of these types: {str(env_types)}")
+
 if config['env_type'] == 'empty':
 	env = EmptyEnvironment(config['env_dim'], config['env_dim'], config['evaluation'])
 else:

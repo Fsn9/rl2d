@@ -151,15 +151,19 @@ class QLearner:
 		## Reward
 		self.__current_reward_sum = 0
 		self.__mov_avgs_reward = []
+		self.__reward_sums = []
 		self.__window_size_reward_moving_avg = 50 # @TODO: put this in yaml or json
 		self.__episodic_reward_sums = deque(maxlen = self.__window_size_reward_moving_avg)
+		self.__window_reward = deque(maxlen = self.__window_size_reward_moving_avg)
 		self.__mov_avg_reward = 0
 		
 		## Steps
 		self.__current_steps_sum = 0
 		self.__mov_avgs_steps = []
+		self.__steps = []
 		self.__window_size_steps_moving_avg = 50 # @TODO: put this in yaml or json
 		self.__episodic_steps_sums = deque(maxlen = self.__window_size_steps_moving_avg)
+		self.__window_steps = deque(maxlen = self.__window_size_steps_moving_avg)
 		self.__mov_avg_steps = 0
 
 		## Episode ending
@@ -170,10 +174,6 @@ class QLearner:
 		## Auxiliar variables
 		self.__cur_state = []
 		self.__next_state = []
-
-		## Gui variables
-		self.__user_interaction_mode = "Auto"
-		self.__action_mode = "Random"
 
 	@property
 	def alpha(self):
@@ -215,6 +215,12 @@ class QLearner:
 	def mov_avgs_steps(self):
 		return self.__mov_avgs_steps
 	@property
+	def steps(self):
+		return self.__steps
+	@property
+	def reward_sums(self):
+		return self.__reward_sums
+	@property
 	def finished(self):
 		return self.__finished
 	@property
@@ -224,23 +230,17 @@ class QLearner:
 	def episodic_steps_sums(self):
 		return self.__episodic_steps_sums
 	@property
+	def window_size_reward_moving_avg(self):
+		return self.__window_size_reward_moving_avg
+	@property
+	def window_size_steps_moving_avg(self):
+		return self.__window_size_steps_moving_avg
+	@property
 	def window_size_ending_causes_moving_avg(self):
 		return self.__window_size_ending_causes_moving_avg
 	@property
 	def ending_causes(self):
 		return self.__ending_causes
-	@property
-	def user_interaction_mode(self):
-		return self.__user_interaction_mode
-	@user_interaction_mode.setter
-	def user_interaction_mode(self, mode):
-		self.__user_interaction_mode = mode
-	@property
-	def action_mode(self):
-		return self.__action_mode
-	@action_mode.setter
-	def action_mode(self, mode):
-		self.__action_mode = mode
 	@property
 	def qtable_path(self):
 		return self.__qtable_path
@@ -253,34 +253,33 @@ class QLearner:
 		obs = self.__environment.observe()
 
 		# 2. Decide
+		print(f'\nstate: {obs}')
 		action = self.decide(obs)
-		print(f'[act], cur_state: {obs}')
-		print(f'[act], action: {action}')
+		print(f'action: {action}')
 
 		# 3. Act and observe again
 		next_obs, terminal, reward, neighbour = self.__environment.step(action)
 
 		# 4. If invalid action skip to next step
 		if neighbour == Entities.VOID.value:
-			print('[act] neighbour is VOID')
-			return False
-		print(f'[act] next_state {next_obs}')
-		print(f'[act] reward: {reward}')
-		print(f'[act] terminal: {terminal}')
-		print(f'[act] neighbour: {neighbour}')
+			print('>>Invalid action for this state. Skipping')
+			return False, "skip"
+		print(f'next_state: {next_obs}')
+		print(f'reward: {reward}')
+		print(f'terminal: {terminal}')
+		print(f'neighbour: {neighbour}')
 
 		# 5. Learn
 		self.learn(obs, next_obs, action, reward, terminal, neighbour)
 
 		# If terminated, reset the environment
 		if terminal:
-			self.__environment.reset()
-			return
+			return True, ""
 
 		# 6. Save next observation
 		obs.get_data_from(next_obs)
 		print(f'[act] Quitting. terminal: {terminal}\n')
-		return terminal
+		return False, ""
 
 	def act_eval(self):
 		# 1. Observe
@@ -298,10 +297,10 @@ class QLearner:
 		if neighbour == Entities.VOID.value:
 			print('[act] neighbour is VOID')
 			return False
-		print(f'[act] next_state {next_obs}')
-		print(f'[act] reward: {reward}')
-		print(f'[act] terminal: {terminal}')
-		print(f'[act] neighbour: {neighbour}')
+		print(f'[learn] next_state {next_obs}')
+		print(f'[learn] reward: {reward}')
+		print(f'[learn] terminal: {terminal}')
+		print(f'[learn] neighbour: {neighbour}')
 
 		# If terminated, reset the environment
 		if terminal:
@@ -317,20 +316,13 @@ class QLearner:
 		if self.__qtable_path:
 			print('action: GREEDY')
 			return self.__qtable.get_greedy_action(state)
-		if self.__user_interaction_mode == "Auto":
-			if random() > self.__current_epsilon:
-				print('action: GREEDY')
-				return self.__qtable.get_greedy_action(state)
-			else:
-				print('action: RANDOM')
-				return choice(self.__action_space)
-		elif self.__user_interaction_mode == "Manual":
-			if self.__action_mode == "Greedy":
-				print('action: GREEDY')
-				return self.__qtable.get_greedy_action(state)
-			else:
-				print('action: RANDOM')
-				return choice(self.__action_space)
+		if random() > self.__current_epsilon:
+			print('policy: GREEDY')
+			return self.__qtable.get_greedy_action(state)
+		else:
+			print('policy: RANDOM')
+			return choice(self.__action_space)
+
 	def decide_greedy(self, state):
 		print('action: GREEDY')
 		return self.__qtable.get_greedy_action(state)
@@ -342,27 +334,42 @@ class QLearner:
 		if terminal:
 			self.__episodes_passed += 1
 			self.__episodes_left -= 1
+
 			self.__current_epsilon = max(self.__final_epsilon, 
 				self.__episodes_passed * (self.__final_epsilon - self.__initial_epsilon) / self.__episodes + self.__initial_epsilon)
+
 			self.__episodic_reward_sums.appendleft(self.__current_reward_sum)
-			self.__episodic_steps_sums.appendleft(self.__current_steps_sum)
+			self.__window_reward.appendleft(self.__current_reward_sum)
 			self.__mov_avg_reward = sum(self.__episodic_reward_sums) / len(self.__episodic_reward_sums)
-			self.__mov_avg_steps = sum(self.__episodic_steps_sums) / len(self.__episodic_steps_sums)
 			self.__mov_avgs_reward.append(self.__mov_avg_reward)
+			
+			self.__episodic_steps_sums.appendleft(self.__current_steps_sum)
+			self.__window_steps.appendleft(self.__current_steps_sum)
+			self.__mov_avg_steps = sum(self.__episodic_steps_sums) / len(self.__episodic_steps_sums)
 			self.__mov_avgs_steps.append(self.__mov_avg_steps)
-			self.__current_reward_sum, self.__current_steps_sum = 0, 0
+
 			self.__window_ending_causes.appendleft(1) if neighbour == Entities.GOAL.value else self.__window_ending_causes.appendleft(0)
+			
+			self.__current_reward_sum, self.__current_steps_sum = 0, 0
+
+			if self.__episodes_passed % self.__window_size_reward_moving_avg == 0:
+				self.__reward_sums.append(sum(self.__window_reward) / len(self.__window_reward))
+
+			if self.__episodes_passed % self.__window_size_steps_moving_avg == 0:
+				self.__steps.append(sum(self.__window_steps) / len(self.__window_steps))
+
 			if self.__episodes_passed % self.__window_size_ending_causes_moving_avg == 0:
 				self.__ending_causes.append(sum(self.__window_ending_causes) / len(self.__window_ending_causes))
+
 			print(f'>> Episodes left: {self.__episodes_left}')
 			if self.__episodes_passed == self.__episodes:
 				self.__finished = True
+
 			max_q = RewardFunction.UNDEFINED
 		else:
 			max_q = self.__qtable.get_q(next_state, self.__qtable.get_greedy_action(next_state))
 		sa = self.__qtable.get_sa(cur_state, action)
 		sa.update_q(reward, max_q, terminal)
-		print(f'[learn] {sa}')
 
 	def export_results(self):
 		# Paths
