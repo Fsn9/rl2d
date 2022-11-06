@@ -15,7 +15,7 @@ TWO_PI = round(2 * pi, DECIMAL_PLACES)
 SQRT_2 = round(sqrt(2), DECIMAL_PLACES)
 SQRT_2_2 = round(sqrt(2) * 0.5, DECIMAL_PLACES)
 SQRT_5 = round(sqrt(5), DECIMAL_PLACES)
-axis_angles = [-PI, -PI_2, 0.0, PI_2, PI]
+AXIS_ANGLES = np.array([-PI, -PI_2, 0.0, PI_2, PI])
 TOLERANCE_ANGLE_EQUALITY = 0.1
 
 class StateSimple:
@@ -154,6 +154,7 @@ class DiscreteAngularSpace(DiscreteSpace):
 
 class DiscreteLineOfSightSpace(DiscreteSpace):
 	TERMINAL_STATES = [(0,0,0), (0,1,0)]
+	COLLISION_FREE_STATE = (2,2,2)
 	def __init__(self, range_, shape = '-'):
 		super().__init__()
 		self.__range, self.__shape = range_, shape
@@ -275,6 +276,9 @@ class EnvAgent(EnvEntity):
 		super().__init__()
 		self.__theta = 0
 
+	def __repr__(self):
+		return 'Agent with pose: ' + f'({self._pos[0]},{self._pos[1]},{self.__theta})'
+
 	@staticmethod
 	def normalize_angle(ang):
 		ang = ((ang % TWO_PI) + TWO_PI) % TWO_PI
@@ -282,11 +286,20 @@ class EnvAgent(EnvEntity):
 			ang -= TWO_PI
 		return ang
 
+	@staticmethod
+	def discretize(x, arr):
+		return arr[np.abs(np.array(x)-arr).argmin()]
+
 	def kinematics(self, action):
 		if action in Actions:
-			return int(round(self._pos[0] + cos(self.__theta + action.value * 0.5))), \
-			int(round(self._pos[1] + sin(self.__theta + action.value * 0.5))), \
-			self.__theta + action.value
+			if action == Actions.STAY:
+				v = 1 if self.__theta in AXIS_ANGLES else SQRT_2
+				return int(round(self._pos[0] + v * cos(self.__theta))), int(round(self._pos[1] + v * sin(self.__theta))), self.__theta
+			else:
+				v = SQRT_2 if self.__theta in AXIS_ANGLES else 1
+				return int(round(self._pos[0] + v * cos(self.__theta + action.value * 0.5))), \
+				int(round(self._pos[1] + v * sin(self.__theta + action.value * 0.5))), \
+				self.discretize(round(self.normalize_angle(self.__theta + action.value), DECIMAL_PLACES), DiscreteAngularSpace.POSSIBLE_ANGLES)
 		else:
 			raise Exception('Not a valid action')
 
@@ -349,15 +362,20 @@ class RewardFunction:
 
 	def collision_avoidance2(self, cur_state, action, next_state, event = None):
 		# 1. If collision or terminal state
-		if event == Entities.OBSTACLE.value or next_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
-			print('[RewardFunction] COLLIDED:',self.COLLISION_PENALTY)
+		if event == Entities.OBSTACLE.value or event == "terminal":
+			print('[RewardFunction] COLLIDED')
 			return self.COLLISION_PENALTY
+		elif (event == Entities.GOAL.value or next_state.azimuth == 0.0) and cur_state.los != DiscreteLineOfSightSpace.COLLISION_FREE_STATE:
+			print('[RewardFunction] GOAL ACHIEVED')
+			return self.GOAL_PRIZE
 		# 2. UNDEFINED cases
 		elif event == Entities.VOID.value:
 			print('[RewardFunction] UNDEFINED:', self.UNDEFINED)
 			return self.UNDEFINED
 		# 3. Collision avoidance
 		else:
+			print('[RewardFunction] GOAL REACHING')
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 			los_idx = np.digitize(action.value, self.__environment.state_space.bins)
 			dist_margin = min(cur_state.los[los_idx], 2)
 			## If distance margin is safe
@@ -649,17 +667,17 @@ class ObstacleEnvironment(Environment):
 	def reset(self, terminal = False, cur_state = None, next_state = None, action = None, event = None):
 		print('>>>Reseting')
 		self._arena[1:self._h + 1, 1:self._w + 1] = [Entities.EMPTY.value]
-		self._place_entity_random(Entities.AGENT)
+		self.__generate_obstacles(randint(0, self.__num_obstacles))
 		self._place_entity_random(Entities.GOAL)
-		self.__generate_obstacles(self.__num_obstacles)
+		self._place_entity_random(Entities.AGENT)
 		self._cur_state(self.make_state()) # Define initial state
-		if self._cur_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
+		if 0 in self._cur_state.los:
 			while True:
 				a_loc = np.where(self._arena == Entities.AGENT.value)
 				self._arena[a_loc[0].item()][a_loc[1].item()] = Entities.EMPTY.value
 				self._place_entity_random(Entities.AGENT)
 				self._cur_state(self.make_state())
-				if self._cur_state.los not in DiscreteLineOfSightSpace.TERMINAL_STATES:
+				if not 0 in self._cur_state.los:
 					break
 
 	def _build_arena(self):
@@ -682,12 +700,13 @@ class ObstacleEnvironment(Environment):
 					break
 
 	def __generate_obstacles(self, num):
+		self._entities[Entities.OBSTACLE].clear()
 		for i in range(num):
 			while True: 
 				r, c = randint(1, self._w), randint(1, self._h)
 				if self._arena[r,c] == Entities.EMPTY.value:
 					self._arena[r,c] = Entities.OBSTACLE.value
-					self._entities[Entities.OBSTACLE][i].move(c - 1, r - 1)
+					self._entities[Entities.OBSTACLE].append(EnvEntity(c - 1, r - 1))
 					break
 
 	def __place_obstacles(self, positions):
@@ -725,7 +744,7 @@ class ObstacleEnvironment(Environment):
 
 		if self._next_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
 			print('event: TERMINAL_STATE')
-			return self._next_state, True, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
+			return self._next_state, True, self._reward_function(self._cur_state, action, self._next_state, "terminal"), "terminal"
 		else:
 			print('event: normal')
 			return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
@@ -738,7 +757,7 @@ class ObstacleEnvironment(Environment):
 			[sin(self._agent.theta), -cos(self._agent.theta)]
 		])
 		translation_agent = np.array([self._agent.x, self._agent.y]).reshape(2,1)
-		if sum(np.isclose(self._agent.theta, axis_angles, atol = TOLERANCE_ANGLE_EQUALITY)) == 1:
+		if sum(np.isclose(self._agent.theta, AXIS_ANGLES, atol = TOLERANCE_ANGLE_EQUALITY)) == 1:
 			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors) + translation_agent + self.__translation_walls).astype(np.int8)
 		else:
 			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors_diag) + translation_agent + self.__translation_walls).astype(np.int8)

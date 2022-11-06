@@ -5,6 +5,10 @@ from environment import EmptyEnvironment, ObstacleEnvironment, Entities
 import os
 import time
 
+# REFRESH RATE (milisseconds)
+LEARNING_REFRESH_RATE = 1
+EVALUATION_REFRESH_RATE = 750
+
 def compute_pixel_size(grid_width, grid_height, big_side):
     if grid_width > grid_height:
         factor = grid_width / grid_height
@@ -71,11 +75,13 @@ class GUI(tk.Tk):
         # string length limit
         self.__str_len_limit = 6
         self.__sim_time = tk.IntVar()
-        self.__sim_time.set(1)
 
         # draw canvas
-        self.__canvas = self.create_canvas(self.width, self.height, "black")
+        self.__canvas = self.create_canvas(self.width, self.height, "white")
         self.__canvas.grid(row = 0, column = 0, columnspan = 2, sticky = tk.W + tk.E + tk.N + tk.S)
+        for r in range(self.__grid_height):
+            for c in range(self.__grid_width):
+                self.draw_rectangle(c,r,"white")
 
         # draw labels
         if not self.__learner.evaluation:
@@ -92,11 +98,14 @@ class GUI(tk.Tk):
             self.label_slider_time = self.create_label("Simulation period (ms):", 6,0)
             self.label_slider_time_slider = tk.Scale(from_ = 1, to = 10000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
             self.label_slider_time_slider.grid(row = 6, column = 1)
+            self.__sim_time.set(LEARNING_REFRESH_RATE)
         else:
             self.label_scene = self.create_label('Scene:',1,0)
             self.label_scene_name = self.create_label("",1,1)
-            #self.label_collisions_wall = self.create_label('Wall collisions:',6,0)
-        #self.label_collisions_wall_val = self.create_label(str(self.__learner.counter_collisions_with_wall),6,1)
+            self.label_slider_time = self.create_label("Simulation period (ms):", 2,0)
+            self.label_slider_time_slider = tk.Scale(from_ = 1, to = 10000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
+            self.label_slider_time_slider.grid(row = 2, column = 1)
+            self.__sim_time.set(EVALUATION_REFRESH_RATE)
 
         # First drawing
         self.draw = self.draw_simple
@@ -127,50 +136,55 @@ class GUI(tk.Tk):
         button.grid(row = row, column = col)
         return button
 
-    def draw_rectangle(self, x, y, color):
+    def draw_rectangle(self, x, y, color, outline = "black"):
         rectangle = self.__canvas.create_rectangle(x * self.__pixel_size, y * self.__pixel_size, (1 + x) * self.__pixel_size,
-                                            (1 + y) * self.__pixel_size, fill = color)
+        (1 + y) * self.__pixel_size, fill = color, outline = outline)
         return rectangle
+
+    def draw_circle(self, x, y, r, color, outline = "black"):
+        circle = self.__canvas.create_oval(self.__pixel_size * (x + 0.5 - r), self.__pixel_size * (y + 0.5 - r),
+        self.__pixel_size * (x + 0.5 + r), self.__pixel_size * (y + 0.5 + r), fill = color, outline = outline, width = 1)
+        return circle
 
     def draw_arrow(self, x0, y0, x1, y1):
         arrow = self.__canvas.create_line(x0 * self.__pixel_size, y0 * self.__pixel_size,
-            x1 * self.__pixel_size, y1 * self.__pixel_size, arrow = tk.LAST, fill = "blue", width = 5
+            x1 * self.__pixel_size, y1 * self.__pixel_size, arrow = tk.LAST, fill = "black", width = 5
         )
         return arrow
 
     def draw_walls(self):
         for x in range(self.__grid_width + 2):
-            self.draw_rectangle(x, 0, 'brown')
+            self.draw_circle(x, 0, 0.5, 'black')
         for y in range(1, self.__grid_height + 2):
-            self.draw_rectangle(0, y, 'brown')
+            self.draw_circle(0, y, 0.5, 'black')
         for x in range(1, self.__grid_width + 2):
-            self.draw_rectangle(x, self.__grid_height - 1, 'brown')
+            self.draw_circle(x, self.__grid_height - 1, 0.5, 'black')
         for y in range(1, self.__grid_height + 2):
-            self.draw_rectangle(self.__grid_width - 1, y, 'brown')
+            self.draw_circle(self.__grid_width - 1, y, 0.5, 'black')
 
     def draw_agent(self):
         agent_pos = self.__environment.entities[Entities.AGENT].pos
         agent_ori = self.__environment.entities[Entities.AGENT].theta
         if self.__env_with_walls:
             mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
-            self.__agent_gui = self.draw_rectangle(agent_pos[0] + 1, agent_pos[1] + 1, 'white')
+            self.__agent_gui = self.draw_circle(agent_pos[0] + 1, agent_pos[1] + 1, 0.5, 'gray')
             #print('Graphics, agent_pos: ', agent_pos[0] + 1, agent_pos[1] + 1)
         else:
             mid_pos_translated = agent_pos[0] + 0.5, agent_pos[1] + 0.5
-            self.__agent_gui = self.draw_rectangle(agent_pos[0], agent_pos[1], 'white')
+            self.__agent_gui = self.draw_circle(agent_pos[0], agent_pos[1], 0.5, 'gray')
         self.__agent_orientation_gui = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
 
     def draw_goal(self):
         goal_pos = self.__environment.entities[Entities.GOAL].pos
         if self.__env_with_walls:
-            self.__goal_gui = self.draw_rectangle(goal_pos[0] + 1, goal_pos[1] + 1, 'red')
+            self.__goal_gui = self.draw_circle(goal_pos[0] + 1, goal_pos[1] + 1, 0.5, 'red')
         else:
-            self.__goal_gui = self.draw_rectangle(goal_pos[0], goal_pos[1], 'red')
+            self.__goal_gui = self.draw_circle(goal_pos[0], goal_pos[1], 0.5, 'red')
 
     def draw_obstacles(self):
         obstacles = self.__environment.entities[Entities.OBSTACLE]
         for obstacle in obstacles:
-            self.__obstacles_gui.append(self.draw_rectangle(obstacle.pos[0] + 1, obstacle.pos[1] + 1, 'brown'))
+            self.__obstacles_gui.append(self.draw_circle(obstacle.pos[0] + 1, obstacle.pos[1] + 1, 0.5, 'black'))
 
     def draw_learning_stats(self):
         steps, gamma, epsilon, reward, episodes = self.__learner.get_stats()
@@ -246,10 +260,10 @@ class GUI(tk.Tk):
 
             exit()
         else:
-            self.repaint()
             terminal = self.__learner.act()
             if terminal[0] or terminal[1] == "skip":
                 self.__environment.reset()
+            self.repaint()
         self.after(self.__sim_time.get(), self.run_learning)
 
     def run_evaluation(self):
@@ -259,4 +273,4 @@ class GUI(tk.Tk):
             time.sleep(2)
             exit()
         self.repaint()
-        self.after(750, self.run_evaluation)
+        self.after(self.__sim_time.get(), self.run_evaluation)

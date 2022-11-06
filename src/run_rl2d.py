@@ -13,7 +13,7 @@ parser.add_argument('--env_dim', type=int, default=5, help='The environment dime
 parser.add_argument('--num_obstacles', type=int, default=3, help='The number of obstacles in the environment')
 
 ## Qlearning args
-parser.add_argument('--learning_rate', type=float, default=0.1, help='The learning rate >= 0 and <= 1')
+parser.add_argument('--learning_rate', type=float, default=0.1, help='The learning rate > 0 and <= 1')
 parser.add_argument('--discount_factor', type=float, default=0.99, \
 	help='The discount factor >= and <= 1. For a value of 1 we have a long-term view agent. For a value of 0 we have a myopic agent.')
 parser.add_argument('--episodes', type=int, default=2000, help='The number of learning episodes')

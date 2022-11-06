@@ -7,6 +7,7 @@ from collections import deque
 import datetime, time
 import os
 import pickle
+from pathlib import Path
 
 class StateAction:
 	def __init__(self, state, action, initial_alpha, gamma):
@@ -55,11 +56,19 @@ class QTable:
 		self.__environment = environment
 
 		if qtable_path:
-			path_aux = qtable_path.replace('.','-')
-			splits = path_aux.split('-')
-			date_id = splits[1]
-			with open(os.path.join('runs', 'run-' + date_id, qtable_path), 'rb') as q_table_object_file:
-				self.__table = pickle.load(q_table_object_file)
+			if qtable_path == "last":
+				run_folder_path = str(sorted(Path('runs').iterdir(), key=os.path.getmtime)[-1].resolve())
+				files = os.listdir(run_folder_path)
+				qtable_path = list(filter(lambda x : '.pkl' in x, files))[0]
+				with open(os.path.join(run_folder_path, qtable_path), 'rb') as q_table_object_file:
+					self.__table = pickle.load(q_table_object_file)
+			else:
+				path_aux = qtable_path.replace('.','-')
+				splits = path_aux.split('-')
+				date_id = splits[1]
+				with open(os.path.join('runs', 'run-' + date_id, qtable_path), 'rb') as q_table_object_file:
+					self.__table = pickle.load(q_table_object_file)
+			print(f'>>Q table {qtable_path} was loaded.')
 		else:
 			self.__table = []
 			for idx, state in enumerate(self.__state_space()):
@@ -80,7 +89,7 @@ class QTable:
 							continue
 				for action in Actions:
 					self.__table.append(StateAction(state, action, self.__alpha, self.__gamma))
-		print(f'>>Q table of length {len(self)} was created.')
+			print(f'>>Q table of length {len(self)} was created.')
 	def __repr__(self):
 		repr_ = ""
 		for sa in self.__table:
@@ -152,7 +161,7 @@ class QLearner:
 		self.__current_reward_sum = 0
 		self.__mov_avgs_reward = []
 		self.__reward_sums = []
-		self.__window_size_reward_moving_avg = 50 # @TODO: put this in yaml or json
+		self.__window_size_reward_moving_avg = 500 # @TODO: put this in yaml or json
 		self.__episodic_reward_sums = deque(maxlen = self.__window_size_reward_moving_avg)
 		self.__window_reward = deque(maxlen = self.__window_size_reward_moving_avg)
 		self.__mov_avg_reward = 0
@@ -161,14 +170,14 @@ class QLearner:
 		self.__current_steps_sum = 0
 		self.__mov_avgs_steps = []
 		self.__steps = []
-		self.__window_size_steps_moving_avg = 50 # @TODO: put this in yaml or json
+		self.__window_size_steps_moving_avg = 500 # @TODO: put this in yaml or json
 		self.__episodic_steps_sums = deque(maxlen = self.__window_size_steps_moving_avg)
 		self.__window_steps = deque(maxlen = self.__window_size_steps_moving_avg)
 		self.__mov_avg_steps = 0
 
 		## Episode ending
 		self.__ending_causes = [] # per epoch
-		self.__window_size_ending_causes_moving_avg = 50 # @TODO: put this in yaml or json
+		self.__window_size_ending_causes_moving_avg = 500 # @TODO: put this in yaml or json
 		self.__window_ending_causes = deque(maxlen = self.__window_size_ending_causes_moving_avg)
 
 		## Auxiliar variables
