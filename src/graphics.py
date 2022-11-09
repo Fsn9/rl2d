@@ -4,6 +4,7 @@ from math import sin, cos
 from environment import EmptyEnvironment, ObstacleEnvironment, Entities
 import os
 import time
+import numpy as np
 
 # REFRESH RATE (milisseconds)
 LEARNING_REFRESH_RATE = 1
@@ -39,9 +40,6 @@ class GUI(tk.Tk):
 
         # save environment
         self.__environment = environment
-        self.__env_with_walls = False
-        if isinstance(self.__environment, ObstacleEnvironment):
-            self.__env_with_walls = True
 
         # define objects containing rectangles of food and snake
         self.__agent_gui = []
@@ -51,14 +49,7 @@ class GUI(tk.Tk):
 
         # @TODO: put this in json or yaml
         num_obstacles = 0
-        #print('Graphics, envw, envh:',self.__environment.w, self.__environment.h)
-        if self.__env_with_walls:
-            #print('Graphics, obstacleenv')
-            self.__grid_width, self.__grid_height, self.big_side = self.__environment.w + 2, self.__environment.h + 2, 400
-        else:
-            #print('Graphics, emptyenv')
-            self.__grid_width, self.__grid_height, self.big_side = self.__environment.w, self.__environment.h, 400
-        #print('Graphics, gw, gh:',self.__grid_width, self.__grid_height)
+        self.__grid_width, self.__grid_height, self.big_side = self.__environment.w, self.__environment.h, 400
         self.__pixel_size, self.width, self.height = compute_pixel_size(self.__grid_width,
             self.__grid_height,
             self.big_side
@@ -93,11 +84,13 @@ class GUI(tk.Tk):
             self.label_epsilon_val = self.create_label(str(self.__learner.current_epsilon),3,1)
             self.label_gamma = self.create_label('Gamma:',4,0)
             self.label_gamma_val = self.create_label(str(self.__learner.current_gamma),4,1)
-            self.label_episodes_left = self.create_label('EpisodesLeft:',5,0)
-            self.label_episodes_left_val = self.create_label(str(self.__learner.episodes_left),5,1)
-            self.label_slider_time = self.create_label("Simulation period (ms):", 6,0)
+            self.label_alpha = self.create_label('Alpha:',5,0)
+            self.label_alpha_val = self.create_label(str(self.__learner.alpha),5,1)
+            self.label_episodes_left = self.create_label('Episodes left:',6,0)
+            self.label_episodes_left_val = self.create_label(str(self.__learner.episodes_left),6,1)
+            self.label_slider_time = self.create_label("Simulation period (ms):", 7,0)
             self.label_slider_time_slider = tk.Scale(from_ = 1, to = 10000, variable = self.__sim_time, orient = tk.HORIZONTAL, command = self.__change_sim_time)
-            self.label_slider_time_slider.grid(row = 6, column = 1)
+            self.label_slider_time_slider.grid(row = 7, column = 1)
             self.__sim_time.set(LEARNING_REFRESH_RATE)
         else:
             self.label_scene = self.create_label('Scene:',1,0)
@@ -112,7 +105,6 @@ class GUI(tk.Tk):
         self.clear()
         if isinstance(self.__environment,ObstacleEnvironment):
             self.draw = self.draw_complex
-            self.draw_walls()
         self.draw()
 
         # start learning process
@@ -152,39 +144,21 @@ class GUI(tk.Tk):
         )
         return arrow
 
-    def draw_walls(self):
-        for x in range(self.__grid_width + 2):
-            self.draw_circle(x, 0, 0.5, 'black')
-        for y in range(1, self.__grid_height + 2):
-            self.draw_circle(0, y, 0.5, 'black')
-        for x in range(1, self.__grid_width + 2):
-            self.draw_circle(x, self.__grid_height - 1, 0.5, 'black')
-        for y in range(1, self.__grid_height + 2):
-            self.draw_circle(self.__grid_width - 1, y, 0.5, 'black')
-
     def draw_agent(self):
         agent_pos = self.__environment.entities[Entities.AGENT].pos
         agent_ori = self.__environment.entities[Entities.AGENT].theta
-        if self.__env_with_walls:
-            mid_pos_translated = agent_pos[0] + 1.5, agent_pos[1] + 1.5
-            self.__agent_gui = self.draw_circle(agent_pos[0] + 1, agent_pos[1] + 1, 0.5, 'gray')
-            #print('Graphics, agent_pos: ', agent_pos[0] + 1, agent_pos[1] + 1)
-        else:
-            mid_pos_translated = agent_pos[0] + 0.5, agent_pos[1] + 0.5
-            self.__agent_gui = self.draw_circle(agent_pos[0], agent_pos[1], 0.5, 'gray')
+        mid_pos_translated = agent_pos[0] + 0.5, agent_pos[1] + 0.5
+        self.__agent_gui = self.draw_circle(agent_pos[0], agent_pos[1], 0.5, 'gray')
         self.__agent_orientation_gui = self.draw_arrow(mid_pos_translated[0], mid_pos_translated[1], mid_pos_translated[0] + 0.5 * cos(agent_ori), mid_pos_translated[1] + 0.5 * sin(agent_ori))
 
     def draw_goal(self):
         goal_pos = self.__environment.entities[Entities.GOAL].pos
-        if self.__env_with_walls:
-            self.__goal_gui = self.draw_circle(goal_pos[0] + 1, goal_pos[1] + 1, 0.5, 'red')
-        else:
-            self.__goal_gui = self.draw_circle(goal_pos[0], goal_pos[1], 0.5, 'red')
+        self.__goal_gui = self.draw_circle(goal_pos[0], goal_pos[1], 0.5, 'red')
 
     def draw_obstacles(self):
         obstacles = self.__environment.entities[Entities.OBSTACLE]
         for obstacle in obstacles:
-            self.__obstacles_gui.append(self.draw_circle(obstacle.pos[0] + 1, obstacle.pos[1] + 1, 0.5, 'black'))
+            self.__obstacles_gui.append(self.draw_circle(obstacle.pos[0], obstacle.pos[1], 0.5, 'black'))
 
     def draw_learning_stats(self):
         steps, gamma, epsilon, reward, episodes = self.__learner.get_stats()
@@ -236,26 +210,26 @@ class GUI(tk.Tk):
             print('Learning is finished!')
             folder_path, time_string = self.__learner.export_results()
 
-            plt.title('Reward')
-            plt.plot([x for x in range(len(self.__learner.steps))], self.__learner.steps)
-            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_reward_moving_avg) + " episodes)")
-            plt.ylabel("Value")
-            plt.savefig(os.path.join(folder_path, 'reward-' + time_string + '.png'), bbox_inches='tight')
+            plt.title('Average cumulative reward per epoch', fontsize = 14)
+            plt.plot([x for x in range(len(self.__learner.reward_sums))], self.__learner.reward_sums)
+            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_reward_moving_avg) + " episodes)", fontsize = 14)
+            plt.ylabel("Average cumulative reward", fontsize = 14)
+            plt.savefig(os.path.join(folder_path, 'reward-' + time_string + '.eps'), bbox_inches='tight', format = 'eps')
             plt.show()
 
-            plt.title('Steps')
-            plt.plot([x for x in range(len(self.__learner.reward_sums))], self.__learner.reward_sums)
-            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_steps_moving_avg) + " episodes)")
-            plt.ylabel("Value")
-            plt.savefig(os.path.join(folder_path, 'steps-' + time_string + '.png'), bbox_inches='tight')
+            plt.title('Average number of steps per epoch', fontsize = 14)
+            plt.plot([x for x in range(len(self.__learner.steps))], self.__learner.steps)
+            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_steps_moving_avg) + " episodes)", fontsize = 14)
+            plt.ylabel("Average steps", fontsize = 14)
+            plt.savefig(os.path.join(folder_path, 'steps-' + time_string + '.eps'), bbox_inches='tight', format = 'eps')
             plt.show()
 
             if isinstance(self.__environment, ObstacleEnvironment):
-                plt.title('Episode ending cause average (1 : goal, 0 : collision)')
+                plt.title('Episode ending cause average per epoch', fontsize = 14)
                 plt.plot([x for x in range(len(self.__learner.ending_causes))], self.__learner.ending_causes)
-                plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_ending_causes_moving_avg) + " episodes)")
-                plt.ylabel("Ending cause")
-                plt.savefig(os.path.join(folder_path, 'ending_causes-' + time_string + '.png'), bbox_inches='tight')
+                plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_ending_causes_moving_avg) + " episodes)", fontsize = 14)
+                plt.ylabel("Average ending cause", fontsize = 14)
+                plt.savefig(os.path.join(folder_path, 'ending_causes-' + time_string + '.eps'), bbox_inches='tight', format = 'eps')
                 plt.show()
 
             exit()
@@ -267,10 +241,37 @@ class GUI(tk.Tk):
         self.after(self.__sim_time.get(), self.run_learning)
 
     def run_evaluation(self):
-        if self.__learner.act_eval() is None: 
+        terminal = self.__learner.act_eval()
+        next_scenario = True
+        if terminal[0]:
+            next_scenario = self.__environment.play_next_scenario()
+        if not next_scenario:
             print('Evaluation is finished!')
-            self.repaint()
-            time.sleep(2)
+            for scenario_idx, trajectory in self.__learner.trajectories.items():
+                plt.title(f'Trajectory for scenario {scenario_idx}')
+                agent_x, agent_y = (np.array(trajectory['x']) + 0.5)[0], (np.array(trajectory['y']) + 0.5)[0]
+                plt.annotate(text = "Start", xy = (agent_x, agent_y), xytext = (agent_x - 0.25, agent_y + 0.1), size = 12, weight = 'bold', color = "white")
+                plt.annotate(text = "End", xy = (trajectory['goal']['x'] + 0.5, trajectory['goal']['y'] + 0.5) , xytext = (trajectory['goal']['x'] + 0.5 - 0.25, trajectory['goal']['y'] + 0.5 + 0.1), size = 12, weight = 'bold', color = "white")
+                plt.plot(np.array(trajectory['x']) + 0.5, np.array(trajectory['y']) + 0.5, color = "black", linestyle = "dashed")
+                plt.scatter(np.array(trajectory['x'][0]) + 0.5, np.array(trajectory['y'][0]) + 0.5, color = "blue", s = 2600)
+                plt.scatter(np.array(trajectory['x'][1:]) + 0.5, np.array(trajectory['y'][1:]) + 0.5, color = "grey", s = 2600)
+                plt.scatter(np.array(trajectory['obstacles']['x']) + 0.5, np.array(trajectory['obstacles']['y']) + 0.5, color = "black", s = 2600)
+                plt.scatter(np.array(trajectory['goal']['x']) + 0.5, np.array(trajectory['goal']['y']) + 0.5, color = "red", s = 2600)
+                # Plot trajectory orientation
+                xprev, yprev = trajectory['x'][0], trajectory['y'][0]
+                for idx, (x,y) in enumerate(zip(trajectory['x'], trajectory['y'])):
+                    if idx > 0:
+                        plt.arrow(xprev + 0.5, yprev + 0.5, (x - xprev) * 0.25, (y - yprev) * 0.25, shape = "full", width = 0.05, color = "black", fill = True)
+                        xprev, yprev = x, y
+                plt.xlabel("x", fontsize = 18)
+                plt.ylabel("y", fontsize = 18)
+                plt.xlim([0, self.__environment.w])
+                plt.ylim([0, self.__environment.h])
+                plt.grid()
+                plt.savefig(os.path.join(self.__learner.run_folder_path, 'trajectory-' + \
+                    str(scenario_idx) + '-' + self.__learner.run_timestamp + '.eps'), bbox_inches='tight', format = 'eps')
+                plt.clf()
+            time.sleep(1)
             exit()
         self.repaint()
         self.after(self.__sim_time.get(), self.run_evaluation)

@@ -54,21 +54,29 @@ class QTable:
 		self.__gamma = gamma
 		self.__state_space = state_space
 		self.__environment = environment
+		self.__qtable_path = []
+		self.__run_folder_path = []
+		self.__run_timestamp = []
 
 		if qtable_path:
+			self.__run_folder_path = str(sorted(Path('runs').iterdir(), key=os.path.getmtime)[-1].resolve())
 			if qtable_path == "last":
-				run_folder_path = str(sorted(Path('runs').iterdir(), key=os.path.getmtime)[-1].resolve())
-				files = os.listdir(run_folder_path)
-				qtable_path = list(filter(lambda x : '.pkl' in x, files))[0]
-				with open(os.path.join(run_folder_path, qtable_path), 'rb') as q_table_object_file:
+				files = os.listdir(self.__run_folder_path)
+				self.__qtable_path = list(filter(lambda x : '.pkl' in x, files))[0]
+				path_aux = self.__qtable_path.replace('.','-')
+				splits = path_aux.split('-')
+				self.__run_timestamp = splits[1]
+				with open(os.path.join(self.__run_folder_path, self.__qtable_path), 'rb') as q_table_object_file:
 					self.__table = pickle.load(q_table_object_file)
 			else:
+				self.__qtable_path = qtable_path
 				path_aux = qtable_path.replace('.','-')
 				splits = path_aux.split('-')
-				date_id = splits[1]
-				with open(os.path.join('runs', 'run-' + date_id, qtable_path), 'rb') as q_table_object_file:
+				self.__run_timestamp = splits[1]
+				with open(os.path.join('runs', 'run-' + date_id, self.__run_timestamp), 'rb') as q_table_object_file:
 					self.__table = pickle.load(q_table_object_file)
 			print(f'>>Q table {qtable_path} was loaded.')
+			print(f'timestamp: {self.__run_timestamp}')
 		else:
 			self.__table = []
 			for idx, state in enumerate(self.__state_space()):
@@ -103,7 +111,16 @@ class QTable:
 	@property
 	def table(self):
 		return self.__table
-
+	@property
+	def qtable_path(self):
+		return self.__qtable_path
+	@property
+	def run_folder_path(self):
+		return self.__run_folder_path
+	@property
+	def run_timestamp(self):
+		return self.__run_timestamp
+	
 	def get_greedy_action(self, state):
 		best_q = -10000
 		action = None
@@ -161,7 +178,7 @@ class QLearner:
 		self.__current_reward_sum = 0
 		self.__mov_avgs_reward = []
 		self.__reward_sums = []
-		self.__window_size_reward_moving_avg = 500 # @TODO: put this in yaml or json
+		self.__window_size_reward_moving_avg = 100 # @TODO: put this in yaml or json
 		self.__episodic_reward_sums = deque(maxlen = self.__window_size_reward_moving_avg)
 		self.__window_reward = deque(maxlen = self.__window_size_reward_moving_avg)
 		self.__mov_avg_reward = 0
@@ -170,15 +187,18 @@ class QLearner:
 		self.__current_steps_sum = 0
 		self.__mov_avgs_steps = []
 		self.__steps = []
-		self.__window_size_steps_moving_avg = 500 # @TODO: put this in yaml or json
+		self.__window_size_steps_moving_avg = 100 # @TODO: put this in yaml or json
 		self.__episodic_steps_sums = deque(maxlen = self.__window_size_steps_moving_avg)
 		self.__window_steps = deque(maxlen = self.__window_size_steps_moving_avg)
 		self.__mov_avg_steps = 0
 
 		## Episode ending
 		self.__ending_causes = [] # per epoch
-		self.__window_size_ending_causes_moving_avg = 500 # @TODO: put this in yaml or json
+		self.__window_size_ending_causes_moving_avg = 100 # @TODO: put this in yaml or json
 		self.__window_ending_causes = deque(maxlen = self.__window_size_ending_causes_moving_avg)
+
+		## Evaluation trajectory
+		self.__trajectories = {}
 
 		## Auxiliar variables
 		self.__cur_state = []
@@ -252,10 +272,19 @@ class QLearner:
 		return self.__ending_causes
 	@property
 	def qtable_path(self):
-		return self.__qtable_path
+		return self.__qtable.qtable_path
+	@property
+	def run_folder_path(self):
+		return self.__qtable.run_folder_path
+	@property
+	def run_timestamp(self):
+		return self.__qtable.run_timestamp
 	@property
 	def evaluation(self):
 		return self.__evaluation
+	@property
+	def trajectories(self):
+		return self.__trajectories
 
 	def act(self):
 		# 1. Observe
@@ -267,7 +296,7 @@ class QLearner:
 		print(f'action: {action}')
 
 		# 3. Act and observe again
-		next_obs, terminal, reward, neighbour = self.__environment.step(action)
+		next_obs, terminal, reward, neighbour, _ = self.__environment.step(action)
 
 		# 4. If invalid action skip to next step
 		if neighbour == Entities.VOID.value:
@@ -291,6 +320,9 @@ class QLearner:
 		return False, ""
 
 	def act_eval(self):
+		# 0. Save trajectory
+		self.write_trajectory(self.__environment.cur_scenario_idx - 1, self.__environment.get_agent_x(), self.__environment.get_agent_y())
+
 		# 1. Observe
 		obs = self.__environment.observe()
 
@@ -300,12 +332,13 @@ class QLearner:
 		print(f'[act], action: {action}')
 
 		# 3. Act and observe again
-		next_obs, terminal, reward, neighbour = self.__environment.step(action)
+		next_obs, terminal, reward, neighbour, final_position = self.__environment.step(action)
 
 		# 4. If invalid action skip to next step
 		if neighbour == Entities.VOID.value:
 			print('[act] neighbour is VOID')
-			return False
+			self.__trajectories[self.__environment.cur_scenario_idx - 1]["ending_reason"] = "VOID"
+			return True, "skip"
 		print(f'[learn] next_state {next_obs}')
 		print(f'[learn] reward: {reward}')
 		print(f'[learn] terminal: {terminal}')
@@ -313,12 +346,17 @@ class QLearner:
 
 		# If terminated, reset the environment
 		if terminal:
-			return self.__environment.play_next_scenario()
+			if neighbour == Entities.OBSTACLE.value:
+				self.__trajectories[self.__environment.cur_scenario_idx - 1]["ending_reason"] = "COLLISION"
+			else:
+				self.__trajectories[self.__environment.cur_scenario_idx - 1]["ending_reason"] = "GOAL"
+			self.write_trajectory(self.__environment.cur_scenario_idx - 1, final_position[0], final_position[1])
+			return True, ""
 
 		# 6. Save next observation
 		obs.get_data_from(next_obs)
 		print(f'[act] Quitting. terminal: {terminal}\n')
-		return terminal
+		return False, ""
 
 	def decide(self, state):
 		self.__current_steps_sum += 1
@@ -426,6 +464,21 @@ class QLearner:
 			pickle.dump(self.__qtable.table, q_table_object_file)
 
 		return folder_path, time_string
+
+	def write_trajectory(self, scenario_idx, x, y):
+		if self.__trajectories.get(scenario_idx):
+			self.__trajectories[scenario_idx]['x'].append(x)
+			self.__trajectories[scenario_idx]['y'].append(y)
+		else:
+			self.__trajectories[scenario_idx] = {'x': [x], \
+			'y': [y], \
+			'goal': {'x' : self.__environment.scenarios[scenario_idx]['goal'][0], \
+				'y' : self.__environment.scenarios[scenario_idx]['goal'][1]
+				}, \
+			'obstacles': {'x': self.__environment.scenarios[scenario_idx]['obstacles']['x'], \
+				'y': self.__environment.scenarios[scenario_idx]['obstacles']['y']
+				}
+			}
 
 	def get_stats(self):
 		return self.__mov_avg_steps, \

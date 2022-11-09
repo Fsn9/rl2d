@@ -103,7 +103,7 @@ class DiscreteSpace:
 		self._space = space_aux
 
 class DiscreteAngularSpace(DiscreteSpace):
-	POSSIBLE_ANGLES = [-PI, -3 * PI_4, -PI_2, -PI_4, 0, PI_4, PI_2, 3 * PI_4]
+	POSSIBLE_ANGLES = [-PI, -3 * PI_4, -PI_2, -PI_4, 0, PI_4, PI_2, 3 * PI_4, PI]
 	def __init__(self, width, height):
 		super().__init__()
 		self.__width, self.__height = width, height
@@ -243,18 +243,6 @@ class EnvEntity:
 
 	def set_y(self, y):
 		self._pos[1] = y
-
-	def go_left(self):
-		self._pos[0] -= 1
-
-	def go_up(self):
-		self._pos[1] += 1
-
-	def go_right(self):
-		self._pos[0] += 1
-
-	def go_down(self):
-		self._pos[1] -= 1
 
 	@property
 	def pos(self):
@@ -471,6 +459,12 @@ class Environment(ABC):
 	def entities(self):
 		return self._entities
 
+	def get_agent_x(self):
+		return self._agent.x
+	
+	def get_agent_y(self):
+		return self._agent.y
+
 	@abstractmethod
 	def reset(self, event = None):
 		pass
@@ -507,6 +501,9 @@ class Environment(ABC):
 	def make_state(self):
 		pass
 
+	def _out_of_bounds(self, x, y):
+		return x < 0 or y < 0 or x >= self._w or y >= self._h
+
 class EmptyEnvironment(Environment):
 	def __init__(self, w, h, evaluation):
 		super().__init__(w, h, evaluation) # Initializing arena, reward, state space, action space and entities
@@ -526,8 +523,9 @@ class EmptyEnvironment(Environment):
 		x, y, ang = self._agent.kinematics(action) # Predict next pose
 
 		# Act
-		if x < 0 or x >= self._w or y < 0 or y >= self._h: # If next pose is out of bounds, return and skip to next decision
+		if self._out_of_bounds(x,y): # If next pose is out of bounds, return and skip to next decision
 			return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
+
 		neighbour = self._arena[y,x] # Get neighbour of next pose
 		
 		if neighbour == Entities.GOAL.value: # If got goal, quit
@@ -567,9 +565,6 @@ class ObstacleEnvironment(Environment):
 		self.__los_state_space = DiscreteLineOfSightSpace(2, self.__los_type)
 		self.__los_state_space.concat(self._state_space)
 		self._state_space = self.__los_state_space
-
-		# Auxiliar variables
-		self.__translation_walls = np.array([1,1]).reshape(2,1)
 
 		# Start drawing environment
 		if self._evaluation: 
@@ -637,6 +632,9 @@ class ObstacleEnvironment(Environment):
 	@property
 	def los_type(self):
 		return self.__los_type
+	@property
+	def cur_scenario_idx(self):
+		return self.__cur_scenario_idx
 
 	def play_next_scenario(self):
 		if self.__cur_scenario_idx == len(self.__scenarios):
@@ -647,13 +645,13 @@ class ObstacleEnvironment(Environment):
 		self.__place_obstacles(self.__scenarios[self.__cur_scenario_idx]['obstacles'])
 
 		if self.__scenarios[self.__cur_scenario_idx]['agent']:
-			self._arena[self.__scenarios[self.__cur_scenario_idx]['agent'][1] + 1, self.__scenarios[self.__cur_scenario_idx]['agent'][0] + 1] = Entities.AGENT.value
+			self._arena[self.__scenarios[self.__cur_scenario_idx]['agent'][1], self.__scenarios[self.__cur_scenario_idx]['agent'][0]] = Entities.AGENT.value
 			self._agent.move(self.__scenarios[self.__cur_scenario_idx]['agent'][0], self.__scenarios[self.__cur_scenario_idx]['agent'][1], self.__scenarios[self.__cur_scenario_idx]['agent'][2])
 		else:
 			self._place_entity_random(Entities.AGENT)
 
 		if self.__scenarios[self.__cur_scenario_idx]['goal']:
-			self._arena[self.__scenarios[self.__cur_scenario_idx]['goal'][1] + 1, self.__scenarios[self.__cur_scenario_idx]['goal'][0] + 1] = Entities.GOAL.value
+			self._arena[self.__scenarios[self.__cur_scenario_idx]['goal'][1], self.__scenarios[self.__cur_scenario_idx]['goal'][0]] = Entities.GOAL.value
 			self._goal.move(self.__scenarios[self.__cur_scenario_idx]['goal'][0], self.__scenarios[self.__cur_scenario_idx]['goal'][1])
 		else:
 			self._place_entity_random(Entities.GOAL)
@@ -666,7 +664,7 @@ class ObstacleEnvironment(Environment):
 
 	def reset(self, terminal = False, cur_state = None, next_state = None, action = None, event = None):
 		print('>>>Reseting')
-		self._arena[1:self._h + 1, 1:self._w + 1] = [Entities.EMPTY.value]
+		self._arena[:,:] = [Entities.EMPTY.value]
 		self.__generate_obstacles(randint(0, self.__num_obstacles))
 		self._place_entity_random(Entities.GOAL)
 		self._place_entity_random(Entities.AGENT)
@@ -680,74 +678,70 @@ class ObstacleEnvironment(Environment):
 				if not 0 in self._cur_state.los:
 					break
 
-	def _build_arena(self):
-		self._arena = np.zeros((self._w + 2, self._h + 2), dtype = np.int8)
-		self._arena[:,0] = Entities.OBSTACLE.value
-		self._arena[0,1:] = Entities.OBSTACLE.value
-		self._arena[1:,-1] = Entities.OBSTACLE.value
-		self._arena[-1,1:self._w+1] = Entities.OBSTACLE.value
-
 	def _place_entity_random(self, ent):
 		while True:
-			r, c = randint(1, self._w), randint(1, self._h)
+			r, c = randint(0, self._w - 1), randint(0, self._h - 1)
 			if self._arena[r,c] == Entities.EMPTY.value:
 				self._arena[r,c] = ent.value
 				if ent == Entities.AGENT:
-					self._agent.move(c - 1, r - 1, choice(DiscreteAngularSpace.POSSIBLE_ANGLES))
+					self._agent.move(c, r, choice(DiscreteAngularSpace.POSSIBLE_ANGLES))
 					break
 				elif ent == Entities.GOAL:
-					self._goal.move(c - 1, r - 1)
+					self._goal.move(c, r)
 					break
 
 	def __generate_obstacles(self, num):
 		self._entities[Entities.OBSTACLE].clear()
 		for i in range(num):
 			while True: 
-				r, c = randint(1, self._w), randint(1, self._h)
+				r, c = randint(0, self._w - 1), randint(0, self._h - 1)
 				if self._arena[r,c] == Entities.EMPTY.value:
 					self._arena[r,c] = Entities.OBSTACLE.value
-					self._entities[Entities.OBSTACLE].append(EnvEntity(c - 1, r - 1))
+					self._entities[Entities.OBSTACLE].append(EnvEntity(c, r))
 					break
 
 	def __place_obstacles(self, positions):
 		del self.__obstacles[:]
 		for idx,(x,y) in enumerate(zip(positions['x'], positions['y'])):
 			self.__obstacles.append(EnvEntity(x,y))
-			self._arena[y + 1,x + 1] = Entities.OBSTACLE.value
+			self._arena[y,x] = Entities.OBSTACLE.value
 		self._entities[Entities.OBSTACLE] = self.__obstacles
 
 	def step(self, action):
 		# Clean old agent info
-		self._arena[self._agent.y + 1,self._agent.x + 1] = Entities.EMPTY.value
+		self._arena[self._agent.y,self._agent.x] = Entities.EMPTY.value
 
 		# Predict next pose
 		print(f'before pose: {self._agent.x,self._agent.y,self._agent.theta}')
 		x, y, ang = self._agent.kinematics(action)
 		print(f'after pose: {x,y,ang}')
 
+		if self._out_of_bounds(x,y): # If next pose is out of bounds, return and skip to next decision
+			return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value, (x,y)
+
 		# Check entity for next position
-		neighbour = self._arena[y + 1, x + 1]
+		neighbour = self._arena[y,x]
 
 		# Act		
 		if neighbour == Entities.OBSTACLE.value:
 			print('event: Collision')
-			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
+			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour, (x,y)
 		if neighbour == Entities.GOAL.value:
 			print('event: GOAL')
-			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour
+			return neighbour, True, self._reward_function(self._cur_state, action, self._next_state, neighbour), neighbour, (x,y)
 
 		self._agent.move(x, y, ang) # Move to predicted pose
 
 		self._next_state(self.make_state()) # Observe after acting
 
-		self._arena[self._agent.y + 1, self._agent.x + 1] = Entities.AGENT.value # Place agent in arena in new position
+		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value # Place agent in arena in new position
 
 		if self._next_state.los in DiscreteLineOfSightSpace.TERMINAL_STATES:
 			print('event: TERMINAL_STATE')
-			return self._next_state, True, self._reward_function(self._cur_state, action, self._next_state, "terminal"), "terminal"
+			return self._next_state, True, self._reward_function(self._cur_state, action, self._next_state, "terminal"), "terminal", (x,y)
 		else:
 			print('event: normal')
-			return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
+			return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour, (x,y)
 
 	def __generate_los(self, terminal = False):
 		if terminal:
@@ -757,17 +751,20 @@ class ObstacleEnvironment(Environment):
 			[sin(self._agent.theta), -cos(self._agent.theta)]
 		])
 		translation_agent = np.array([self._agent.x, self._agent.y]).reshape(2,1)
+
+		# Obtain points that the agent is scanning in the agents frame
 		if sum(np.isclose(self._agent.theta, AXIS_ANGLES, atol = TOLERANCE_ANGLE_EQUALITY)) == 1:
-			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors) + translation_agent + self.__translation_walls).astype(np.int8)
+			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors) + translation_agent).astype(np.int8)
 		else:
-			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors_diag) + translation_agent + self.__translation_walls).astype(np.int8)
-		np.clip(los_positions, 0, self._w + 1, out = los_positions)
+			los_positions = np.rint(np.dot(rot, self.__los_state_space.vectors_diag) + translation_agent).astype(np.int8)
+
 		los = []
 		for bin_idx in range(self.__los_state_space.num_bins):
 			bin_to_scan = []
 			for dist_idx in range(self.__los_state_space.range):
 				cell_idx = dist_idx * self.__los_state_space.num_bins + bin_idx
-				bin_to_scan.append(self._arena[los_positions[1, cell_idx]][los_positions[0, cell_idx]])
+				y, x = los_positions[1, cell_idx], los_positions[0, cell_idx]
+				bin_to_scan.append(self.__los_state_space.range) if self._out_of_bounds(x,y) else bin_to_scan.append(self._arena[y][x])	
 			los.append(self.__distance_to_obstacle(bin_to_scan, self.__los_state_space.range))
 		return tuple(los)
 
@@ -779,11 +776,4 @@ class ObstacleEnvironment(Environment):
 		except: return max_range
 
 	def make_state(self, terminal = False):
-		return (
-			self._agent.x,
-			self._agent.y,
-			self._agent.theta,
-			self._goal.x,
-			self._goal.y,
-			self.__generate_los(terminal)
-		)
+		return (self._agent.x, self._agent.y, self._agent.theta, self._goal.x, self._goal.y, self.__generate_los(terminal))
