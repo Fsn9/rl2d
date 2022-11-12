@@ -212,14 +212,14 @@ class GUI(tk.Tk):
 
             plt.title('Average cumulative reward per epoch', fontsize = 14)
             plt.plot([x for x in range(len(self.__learner.reward_sums))], self.__learner.reward_sums)
-            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_reward_moving_avg) + " episodes)", fontsize = 14)
+            plt.xlabel("Epochs (Windows of " + str(self.__learner.window_size_reward_moving_avg) + " episodes)", fontsize = 14)
             plt.ylabel("Average cumulative reward", fontsize = 14)
             plt.savefig(os.path.join(folder_path, 'reward-' + time_string + '.eps'), bbox_inches='tight', format = 'eps')
             plt.show()
 
             plt.title('Average number of steps per epoch', fontsize = 14)
             plt.plot([x for x in range(len(self.__learner.steps))], self.__learner.steps)
-            plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_steps_moving_avg) + " episodes)", fontsize = 14)
+            plt.xlabel("Epochs (Windows of " + str(self.__learner.window_size_steps_moving_avg) + " episodes)", fontsize = 14)
             plt.ylabel("Average steps", fontsize = 14)
             plt.savefig(os.path.join(folder_path, 'steps-' + time_string + '.eps'), bbox_inches='tight', format = 'eps')
             plt.show()
@@ -227,7 +227,7 @@ class GUI(tk.Tk):
             if isinstance(self.__environment, ObstacleEnvironment):
                 plt.title('Episode ending cause average per epoch', fontsize = 14)
                 plt.plot([x for x in range(len(self.__learner.ending_causes))], self.__learner.ending_causes)
-                plt.xlabel("Epochs (Window of " + str(self.__learner.window_size_ending_causes_moving_avg) + " episodes)", fontsize = 14)
+                plt.xlabel("Epochs (Windows of " + str(self.__learner.window_size_ending_causes_moving_avg) + " episodes)", fontsize = 14)
                 plt.ylabel("Average ending cause", fontsize = 14)
                 plt.savefig(os.path.join(folder_path, 'ending_causes-' + time_string + '.eps'), bbox_inches='tight', format = 'eps')
                 plt.show()

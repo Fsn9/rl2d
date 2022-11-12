@@ -355,7 +355,7 @@ class RewardFunction:
 			return self.COLLISION_PENALTY
 		elif (event == Entities.GOAL.value or next_state.azimuth == 0.0) and cur_state.los != DiscreteLineOfSightSpace.COLLISION_FREE_STATE:
 			print('[RewardFunction] GOAL ACHIEVED')
-			return self.GOAL_PRIZE
+			return self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 		# 2. UNDEFINED cases
 		elif event == Entities.VOID.value:
 			print('[RewardFunction] UNDEFINED:', self.UNDEFINED)
@@ -399,6 +399,7 @@ class RewardFunction:
 						return -0.5 + 0.5 * self.goal_reaching(cur_state.azimuth, next_state.azimuth)
 
 	def goal_reaching(self, cur_state, next_state):
+		return abs(cur_state) - abs(next_state)
 		return self.normalize(-self.__max_angle_variation, 
 				self.__max_angle_variation, 
 				abs(cur_state) - abs(next_state)
@@ -524,12 +525,12 @@ class EmptyEnvironment(Environment):
 
 		# Act
 		if self._out_of_bounds(x,y): # If next pose is out of bounds, return and skip to next decision
-			return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value
+			return self._cur_state, False, RewardFunction.UNDEFINED, Entities.VOID.value, (x,y)
 
 		neighbour = self._arena[y,x] # Get neighbour of next pose
 		
 		if neighbour == Entities.GOAL.value: # If got goal, quit
-			return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour
+			return self._cur_state, True, self._reward_function(self._cur_state, action, self._cur_state, neighbour), neighbour, (x,y)
 
 		self._agent.move(x, y, ang) # Move to predicted pose
 
@@ -537,7 +538,7 @@ class EmptyEnvironment(Environment):
 
 		self._arena[self._agent.y, self._agent.x] = Entities.AGENT.value
 
-		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour
+		return self._next_state, False, self._reward_function(self._cur_state, action, self._next_state, None), neighbour, (x,y)
 
 	def make_state(self):
 		return (	

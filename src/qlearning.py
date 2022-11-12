@@ -73,7 +73,7 @@ class QTable:
 				path_aux = qtable_path.replace('.','-')
 				splits = path_aux.split('-')
 				self.__run_timestamp = splits[1]
-				with open(os.path.join('runs', 'run-' + date_id, self.__run_timestamp), 'rb') as q_table_object_file:
+				with open(os.path.join('runs', 'run-' + self.__run_timestamp, 'table-' + self.__run_timestamp + '.pkl'), 'rb') as q_table_object_file:
 					self.__table = pickle.load(q_table_object_file)
 			print(f'>>Q table {qtable_path} was loaded.')
 			print(f'timestamp: {self.__run_timestamp}')
